@@ -6,8 +6,8 @@ from car import Car
 from pedestrian import Pedestrian
 
 # parameters
-num_cars = 5
-num_pedestrians = 10
+num_cars = 8
+num_pedestrians = 15
 traffic_light = 'horizontal'
 light_duration = 300  # Duration of each traffic light in frames
 
