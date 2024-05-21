@@ -4,10 +4,12 @@ from utils import *
 from house import House
 from car import Car
 from pedestrian import Pedestrian
+from Agent.agent import Agent
 
 # parameters
 num_cars = 8
 num_pedestrians = 15
+num_agent = 1
 traffic_light = 'horizontal'
 light_duration = 300  # Duration of each traffic light in frames
 
@@ -28,6 +30,7 @@ def main():
     cars = []
     pedestrians = []
     litters = []
+    agents = []
 
     road_used_x = [False] * len(road_xranges)
     road_used_y = [False] * len(road_yranges)
@@ -103,6 +106,23 @@ def main():
                                         direction,
                                         litter_prob))
             count += 1
+    count = 0
+    road_sides = {(i, side): False for i in range(len(road_yranges)) for side in ['left', 'right']}
+    while count < num_agent:
+        available_roads = [i for i in range(len(road_yranges)) if not road_sides[(i, 'left')]]
+        if not available_roads:
+            continue
+        road_index = random.choice(available_roads)
+        random_road = road_yranges[road_index]
+        # let the agent land on the road
+        y_position = random_road[0] - AGENT_SIZE - HOUSE_SIZE
+        if y_position < 0 or y_position > HEIGHT - AGENT_SIZE:
+            continue
+        agent = Agent(random.randint(0, WIDTH - AGENT_SIZE), y_position)
+        agents.append(agent)
+        road_sides[(road_index, 'left')] = True
+        count += 1
+
     # 主循环
     running = True
     clock = pygame.time.Clock()
@@ -128,6 +148,11 @@ def main():
             litter = pedestrian.generate_litter(pedestrian.rect.x, pedestrian.rect.y)
             if litter:
                 litters.append(litter)
+        for litter in litters:
+            if litter.weight == 0:
+                litters.remove(litter)
+        for agent in agents:
+            agent.start_cleaning(litters, pedestrians, cars, agents, houses, traffic_light)
 
         # 清屏
         screen.fill(WHITE)
@@ -141,6 +166,8 @@ def main():
             pedestrian.draw(screen)
         for litter in litters:
             litter.draw(screen)
+        for agent in agents:
+            agent.draw(screen)
 
         font = pygame.font.Font(None, 36)
         text = font.render(f"Traffic Light: {traffic_light}", True, BLACK)

@@ -1,1 +1,1 @@
-clock.tick(60)
+AGENT_SIZE
