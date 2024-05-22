@@ -9,6 +9,8 @@ road_yranges = [(y + HOUSE_SIZE, y + HOUSE_SIZE * 2) for y in range(0, WIDTH, HO
 
 class Pedestrian(LitterGenerator):
     def __init__(self, x, y, direction, litter_prob=0.1):
+        self.x = x
+        self.y = y
         self.rect = pygame.Rect(x, y, *PEDESTRIAN_SIZE)
         self.speed = random.choice([1.25, 0.75])
         self.direction = direction  # 行人的移动方向，可以是 'up'、'down'、'left' 或 'right'
@@ -24,12 +26,12 @@ class Pedestrian(LitterGenerator):
         if self.direction in ['up', 'down']:
             road_ranges = road_yranges
             road_width = road_ranges[0][1] - road_ranges[0][0]
-            time_to_cross = (road_width + PEDESTRIAN_SIZE[1] + self.distance_to_house(self.rect.x, self.rect.y)) // self.speed + 2
+            time_to_cross = (road_width + PEDESTRIAN_SIZE[1] + self.distance_to_house(self.x, self.y)) // self.speed + 2
             light_direction = 'vertical'
         else:
             road_ranges = road_xranges
             road_width = road_ranges[0][1] - road_ranges[0][0]
-            time_to_cross = (road_width + PEDESTRIAN_SIZE[0] + self.distance_to_house(self.rect.x, self.rect.y)) // self.speed + 2
+            time_to_cross = (road_width + PEDESTRIAN_SIZE[0] + self.distance_to_house(self.x, self.y)) // self.speed + 2
             light_direction = 'horizontal'
 
         if any(r[0] <= next_position <= r[1] for r in road_ranges):
@@ -39,9 +41,9 @@ class Pedestrian(LitterGenerator):
                 for r in road_ranges:
                     if r[0] <= next_position <= r[1]:
                         if self.direction in ['up', 'down']:
-                            self.rect.y = r[1] if self.direction == 'up' else r[0] - PEDESTRIAN_SIZE[1]
+                            self.y = r[1] if self.direction == 'up' else r[0] - PEDESTRIAN_SIZE[1]
                         else:
-                            self.rect.x = r[1] if self.direction == 'left' else r[0] - PEDESTRIAN_SIZE[0]
+                            self.x = r[1] if self.direction == 'left' else r[0] - PEDESTRIAN_SIZE[0]
                         self.moving = False
         else:
             self.update_position()
@@ -49,33 +51,33 @@ class Pedestrian(LitterGenerator):
 
     def calculate_next_position(self):
         if self.direction == 'up':
-            return self.rect.y - self.speed
+            return self.y - self.speed
         elif self.direction == 'down':
-            return self.rect.y + self.speed + PEDESTRIAN_SIZE[1]
+            return self.y + self.speed + PEDESTRIAN_SIZE[1]
         elif self.direction == 'left':
-            return self.rect.x - self.speed
+            return self.x - self.speed
         elif self.direction == 'right':
-            return self.rect.x + self.speed + PEDESTRIAN_SIZE[0]
+            return self.x + self.speed + PEDESTRIAN_SIZE[0]
 
     def update_position(self):
         if self.direction == 'up':
-            self.rect.y -= self.speed
+            self.y -= self.speed
         elif self.direction == 'down':
-            self.rect.y += self.speed
+            self.y += self.speed
         elif self.direction == 'left':
-            self.rect.x -= self.speed
+            self.x -= self.speed
         elif self.direction == 'right':
-            self.rect.x += self.speed
+            self.x += self.speed
 
     def reset_position_if_needed(self):
-        if self.direction == 'up' and self.rect.y < -PEDESTRIAN_SIZE[1]:
-            self.rect.y = HEIGHT
-        elif self.direction == 'down' and self.rect.y > HEIGHT:
-            self.rect.y = -PEDESTRIAN_SIZE[1]
-        elif self.direction == 'left' and self.rect.x < -PEDESTRIAN_SIZE[0]:
-            self.rect.x = WIDTH
-        elif self.direction == 'right' and self.rect.x > WIDTH:
-            self.rect.x = -PEDESTRIAN_SIZE[0]
+        if self.direction == 'up' and self.y < -PEDESTRIAN_SIZE[1]:
+            self.y = HEIGHT
+        elif self.direction == 'down' and self.y > HEIGHT:
+            self.y = -PEDESTRIAN_SIZE[1]
+        elif self.direction == 'left' and self.x < -PEDESTRIAN_SIZE[0]:
+            self.x = WIDTH
+        elif self.direction == 'right' and self.x > WIDTH:
+            self.x = -PEDESTRIAN_SIZE[0]
 
     def distance_to_house(self, x, y):
         if self.direction == 'up':
@@ -97,6 +99,7 @@ class Pedestrian(LitterGenerator):
         return 0
 
     def draw(self, screen):
+        self.rect = pygame.Rect(self.x, self.y, *PEDESTRIAN_SIZE)
         pygame.draw.rect(screen, RED, self.rect)
 
     def generate_litter(self, x, y):

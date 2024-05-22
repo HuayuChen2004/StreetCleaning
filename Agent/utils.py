@@ -5,7 +5,7 @@ import pygame
 
 # calculation, decision, and observation functions
 
-def calculate_time_to_reach(self, litter, moving_object, speed):
+def calculate_time_to_reach(litter, moving_object, speed):
     if moving_object.direction == "down":
         distance = litter.y - moving_object.y
     elif moving_object.direction == "up":
@@ -22,7 +22,7 @@ def calculate_time_to_reach(self, litter, moving_object, speed):
     else:
         return float('inf')  # if speed is zero or negative, set a large time
 
-def is_litter_in_pedestrian_path(self, observed_pedestrians, litter):
+def is_litter_in_pedestrian_path(observed_pedestrians, litter):
     for pedestrian in observed_pedestrians:
         if (litter.y > pedestrian.y and 
             ((pedestrian.x <= litter.x < pedestrian.x + PEDESTRIAN_SIZE) or
@@ -49,7 +49,7 @@ def is_litter_in_pedestrian_path(self, observed_pedestrians, litter):
             return pedestrian
     return None
 
-def is_litter_in_car_path(self, observed_cars, litter):
+def is_litter_in_car_path(observed_cars, litter):
     for car in observed_cars:
         if (car.direction == "down" and 
             litter.y > car.y and 
@@ -77,53 +77,7 @@ def is_litter_in_car_path(self, observed_cars, litter):
 
     return None
 
-def calculate_pedestrian_speed(self, pedestrian):
-    positions = self.observed_pedestrian_positions.get(pedestrian, [])
-    if len(positions) < 2:
-        return 0  # Not enough data to calculate speed
-    # Calculate speed based on the last two positions
-    (x1, y1), (x2, y2) = positions[-2], positions[-1]
-    distance = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-    return distance  # Assuming each update represents a constant time step
 
-def calculate_car_speed(self, car):
-    positions = self.observed_car_positions.get(car, [])
-    if len(positions) < 2:
-        return 0  # Not enough data to calculate speed
-    # Calculate speed based on the last two positions
-    (x1, y1), (x2, y2) = positions[-2], positions[-1]
-    distance = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-    return distance  # Assuming each update represents a constant time step
-
-def calculate_litter_distance(self, litter):
-    dx = litter.x - self.x
-    dy = litter.y - self.y
-    return math.sqrt(dx**2 + dy**2)
-
-def calculate_litters_distances(self, litters):
-    return [self.calculate_litter_distance(litter) for litter in litters]
-
-def find_closest_litter(self, litters):
-    distances = self.calculate_litters_distances(litters)
-    return litters[distances.index(min(distances))] if distances else None
-
-def is_time_sufficient(self, litter, observed_pedestrians, observed_cars):
-    time_to_clean = litter.weight
-
-    pedestrian = is_litter_in_pedestrian_path(observed_pedestrians, litter)
-    if pedestrian:
-        speed = calculate_pedestrian_speed(pedestrian)
-        time_to_reach_litter = calculate_time_to_reach(litter, pedestrian, speed)
-        return time_to_reach_litter > time_to_clean
-
-    # If litter is not in pedestrian path, check if it is in car path
-    car = is_litter_in_car_path(observed_cars, litter)
-    if car:
-        speed = calculate_car_speed(car)  # Assuming cars have a speed attribute
-        time_to_reach_litter = calculate_time_to_reach(litter, car, speed)
-        return time_to_reach_litter > time_to_clean
-    
-    return True
 
 # def find_available_way(litter, x, y, pedestrians, cars, houses):
 #     if litter.x > x and litter.y > y:

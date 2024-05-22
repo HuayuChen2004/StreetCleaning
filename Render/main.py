@@ -107,21 +107,30 @@ def main():
                                         litter_prob))
             count += 1
     count = 0
-    road_sides = {(i, side): False for i in range(len(road_yranges)) for side in ['left', 'right']}
     while count < num_agent:
         available_roads = [i for i in range(len(road_yranges)) if not road_sides[(i, 'left')]]
         if not available_roads:
-            continue
+            break
         road_index = random.choice(available_roads)
         random_road = road_yranges[road_index]
         # let the agent land on the road
-        y_position = random_road[0] - AGENT_SIZE - HOUSE_SIZE
-        if y_position < 0 or y_position > HEIGHT - AGENT_SIZE:
-            continue
-        agent = Agent(random.randint(0, WIDTH - AGENT_SIZE), y_position)
+        y_position = random_road[0] 
+        x_position = random.randint(0, WIDTH - AGENT_SIZE)
+        # Check if the agent would overlap with a car, pedestrian or house
+        for house in houses:
+            if house.rect.collidepoint(x_position, y_position):
+                continue
+        for car in cars:
+            if car.rect.collidepoint(x_position, y_position):
+                continue
+        for pedestrian in pedestrians:
+            if pedestrian.rect.collidepoint(x_position, y_position):
+                continue
+        agent = Agent(x_position, y_position)
         agents.append(agent)
         road_sides[(road_index, 'left')] = True
         count += 1
+
 
     # 主循环
     running = True
@@ -140,12 +149,12 @@ def main():
         # 更新车辆和行人位置
         for car in cars:
             car.move(traffic_light, left_time)
-            litter = car.generate_litter(car.rect.x, car.rect.y)
+            litter = car.generate_litter(car.x, car.y)
             if litter:
                 litters.append(litter)
         for pedestrian in pedestrians:
             pedestrian.move(traffic_light, left_time)
-            litter = pedestrian.generate_litter(pedestrian.rect.x, pedestrian.rect.y)
+            litter = pedestrian.generate_litter(pedestrian.x, pedestrian.y)
             if litter:
                 litters.append(litter)
         for litter in litters:
