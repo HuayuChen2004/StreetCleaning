@@ -4,6 +4,7 @@ from Render.utils import *
 from Agent.utils import *
 import math
 import random
+import time
 
 class Agent(LitterCleaner):
     def __init__(self, x, y):
@@ -11,11 +12,13 @@ class Agent(LitterCleaner):
         self.type = "agent"
         self.x = x
         self.y = y
-        self.speed = 0.5
+        self.speed = 1.5
         self.observed_pedestrian_positions = {}  # Dictionary to store the position history of each pedestrian
         self.observed_car_positions = {}  # Dictionary to store the position history of each car
         self.direction = random.choice(DIRECTIONS)
-        self.vision_range = [[[self.x - VISION_SIZE, self.x + AGENT_SIZE + VISION_SIZE], [self.y - VISION_SIZE, self.y + AGENT_SIZE + VISION_SIZE]]]
+        self.vision_range = []
+        self.is_crossing = False
+        self.crossing_direction = None
         # print("self.vision range: ", self.vision_range)
         # exit()
 
@@ -72,13 +75,16 @@ class Agent(LitterCleaner):
                     vision_range[0][0] <= car.x + CAR_WIDTH < vision_range[0][1] and 
                     vision_range[1][0] <= car.y + CAR_WIDTH < vision_range[1][1]]
         self.update_car_positions(observed)
+        return observed
     
     def observe_litters(self, litters):
         # print("self.vision range: ", self.vision_range)
         # exit()
-        return [litter for vision_range in self.vision_range for litter in litters 
+        observed = [litter for vision_range in self.vision_range for litter in litters 
                 if vision_range[0][0] <= litter.x < vision_range[0][1] and 
                 vision_range[1][0] <= litter.y < vision_range[1][1] and litter.weight > 0]
+        print("observed litters: ", observed)
+        return observed
 
     def update_observed_pedestrian_positions(self, pedestrians):
         for observed_pedestrian in self.observe_pedestrians(pedestrians):
@@ -101,9 +107,11 @@ class Agent(LitterCleaner):
     def safe_clean(self, litter, observed_pedestrians, observed_cars, observed_houses, traffic_light):
         # Check if there is enough time to clean the litter
         if self.is_time_sufficient(litter, observed_pedestrians, observed_cars):
+            print("time is sufficient for cleaning this litter!")
             self.clean_litter(litter, observed_pedestrians, observed_cars, observed_houses)
-        else:
-            self.wander(traffic_light)
+        # else:
+        #     self.wander(traffic_light)
+        # 先不动试试看
 
     def touch_road_intersection(self):
         road_xranges = [(x + HOUSE_SIZE, x + HOUSE_SIZE * 2) for x in range(0, WIDTH - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
@@ -134,8 +142,10 @@ class Agent(LitterCleaner):
             self.x -= self.speed
         elif direction == 'right':
             self.x += self.speed
+        elif not direction:
+            pass
         else:
-            raise ValueError("direction should be set (up down left right)")
+            raise ValueError("unusual direction!")
 
         # Check if the agent is out of the screen
         if self.x < 0:
@@ -220,36 +230,109 @@ class Agent(LitterCleaner):
                 return
 
         raise ValueError("Agent should be on the road")
-
     
+    def need_to_cross_road(self, litter):
+        road_xranges = [(x + HOUSE_SIZE, x + HOUSE_SIZE * 2) for x in range(0, WIDTH - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
+        road_yranges = [(y + HOUSE_SIZE, y + HOUSE_SIZE * 2) for y in range(0, HEIGHT - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
+        for xrange in road_xranges:
+            if xrange[0] <= litter.x <= xrange[1] - ROAD_WIDTH/2 - LITTER_SIZE and \
+                xrange[0] + ROAD_WIDTH/2 <= self.x <= xrange[1] - AGENT_SIZE or \
+                xrange[0] <= self.x <= xrange[1] - ROAD_WIDTH/2 - AGENT_SIZE and \
+                xrange[0] + ROAD_WIDTH/2 <= litter.x <= xrange[1] - LITTER_SIZE:
+                return True
+        for yrange in road_yranges:
+            if yrange[0] <= litter.y <= yrange[1] - ROAD_WIDTH/2 - LITTER_SIZE and \
+                yrange[0] + ROAD_WIDTH/2 <= self.y <= yrange[1] - AGENT_SIZE or \
+                yrange[0] <= self.y <= yrange[1] - ROAD_WIDTH/2 - AGENT_SIZE and \
+                yrange[0] + ROAD_WIDTH/2 <= litter.y <= yrange[1] - LITTER_SIZE:
+                return True
+        return False
+    
+    def find_crossing_direction(self, litter):
+        road_xranges = [(x + HOUSE_SIZE, x + HOUSE_SIZE * 2) for x in range(0, WIDTH - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
+        road_yranges = [(y + HOUSE_SIZE, y + HOUSE_SIZE * 2) for y in range(0, HEIGHT - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
+        for xrange in road_xranges:
+            if xrange[0] <= litter.x <= xrange[1] - ROAD_WIDTH/2 - LITTER_SIZE and \
+                xrange[0] + ROAD_WIDTH/2 <= self.x <= xrange[1] - AGENT_SIZE:
+                return 'left' 
+            if xrange[0] <= self.x <= xrange[1] - ROAD_WIDTH/2 - AGENT_SIZE and \
+                xrange[0] + ROAD_WIDTH/2 <= litter.x <= xrange[1] - LITTER_SIZE:
+                return 'right'
+        for yrange in road_yranges:
+            if yrange[0] <= litter.y <= yrange[1] - ROAD_WIDTH/2 - LITTER_SIZE and \
+                yrange[0] + ROAD_WIDTH/2 <= self.y <= yrange[1] - AGENT_SIZE:
+                return 'up'
+            if yrange[0] <= self.y <= yrange[1] - ROAD_WIDTH/2 - AGENT_SIZE and \
+                yrange[0] + ROAD_WIDTH/2 <= litter.y <= yrange[1] - LITTER_SIZE:
+                return 'down'
+        return None
+    
+    def has_crossed(self, litter):
+        road_xranges = [(x + HOUSE_SIZE, x + HOUSE_SIZE * 2) for x in range(0, WIDTH - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
+        road_yranges = [(y + HOUSE_SIZE, y + HOUSE_SIZE * 2) for y in range(0, HEIGHT - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
+        for xrange in road_xranges:
+            if xrange[0] <= litter.x <= xrange[1] - ROAD_WIDTH/2 - LITTER_SIZE and \
+                xrange[0] <= self.x <= xrange[1] - ROAD_WIDTH/2 - AGENT_SIZE:
+                return True
+            if xrange[0] + ROAD_WIDTH/2 <= litter.x <= xrange[1] - LITTER_SIZE and \
+                xrange[0] + ROAD_WIDTH/2 <= self.x <= xrange[1] - AGENT_SIZE:
+                return True
+        for yrange in road_yranges:
+            if yrange[0] <= litter.y <= yrange[1] - ROAD_WIDTH/2 - LITTER_SIZE and \
+                yrange[0] <= self.y <= yrange[1] - ROAD_WIDTH/2 - AGENT_SIZE:
+                return True
+            if yrange[0] + ROAD_WIDTH/2 <= litter.y <= yrange[1] - LITTER_SIZE and \
+                yrange[0] + ROAD_WIDTH/2 <= self.y <= yrange[1] - AGENT_SIZE:
+                return True
+        return False
+
     def clean_litter(self, litter, pedestrians, cars, houses):
         # add street lights: version 2
         # restrict agent's direction to 'up', 'down', 'left', 'right'
         # TODO
-        self.direction = find_available_way(litter, self.x, self.y, self.observe_pedestrians(pedestrians), self.observe_cars(cars), self.observe_houses(houses))
-        self.move(self.direction)
+        if self.is_crossing:
+            self.move(self.crossing_direction)
+            if self.has_crossed(litter):
+                self.is_crossing = False
+                self.crossing_direction = None
+        elif self.need_to_cross_road(litter):
+            print("need to cross!")
+            self.is_crossing = True
+            self.crossing_direction = self.find_crossing_direction(litter)
+            self.move(self.crossing_direction)
+        else:
+            self.direction = self.find_available_way(litter, self.observe_pedestrians(pedestrians), self.observe_cars(cars), self.observe_houses(houses))
+        # print("direction: ", self.direction)
+            if self.direction:
+                self.move(self.direction)
         if self.x == litter.x and self.y == litter.y and litter.weight > 0:
             litter.clean()
     
     def start_cleaning(self, litters, pedestrians, cars, agents, houses, traffic_light):
         # print("litters: ", litters)
         # print("observed litters: ", self.observe_litters(litters))
-        if not self.observe_litters(litters) and not self.observe_agents(agents):
-            self.wander(traffic_light)
-        elif self.observe_agents(agents):
-            for agent in self.observe_agents(agents):
-                self.vision_range.append([[agent.x - VISION_SIZE, agent.x + AGENT_SIZE + VISION_SIZE], [agent.y - VISION_SIZE, agent.y + AGENT_SIZE + VISION_SIZE]])
+        # start_time = time.time()
+        # print("observed_litters: ", self.observe_litters(litters))
+        # print("observed_agents: ", self.observe_agents(agents))
+        self.vision_range = []
+        for agent in self.observe_agents(agents):
+            self.vision_range.append([[agent.x - VISION_SIZE, agent.x + AGENT_SIZE + VISION_SIZE], 
+                                        [agent.y - VISION_SIZE, agent.y + AGENT_SIZE + VISION_SIZE]])
         if not self.observe_litters(litters):
             self.wander(traffic_light)
+
         else:
             closet_litter = self.find_closest_litter(litters)
+            print("closet litter: ", closet_litter)
             observed_pedestrians = self.observe_pedestrians(pedestrians)
             observed_cars = self.observe_cars(cars)
             observed_houses = self.observe_houses(houses)
             self.safe_clean(closet_litter, observed_pedestrians, observed_cars, observed_houses, traffic_light)
 
     def observe_agents(self, agents):
-        return [agent for vision_range in self.vision_range for agent in agents 
+        self.vision_range = [[[self.x - VISION_SIZE, self.x + AGENT_SIZE + VISION_SIZE],
+                                [self.y - VISION_SIZE, self.y + AGENT_SIZE + VISION_SIZE]]]
+        observed = [agent for vision_range in self.vision_range for agent in agents 
                 if vision_range[0][0] <= agent.x < vision_range[0][1] and 
                 vision_range[1][0] <= agent.y < vision_range[1][1] or 
                 vision_range[0][0] <= agent.x + AGENT_SIZE < vision_range[0][1] and 
@@ -258,6 +341,8 @@ class Agent(LitterCleaner):
                 vision_range[1][0] <= agent.y + AGENT_SIZE < vision_range[1][1] or
                 vision_range[0][0] <= agent.x + AGENT_SIZE < vision_range[0][1] and 
                 vision_range[1][0] <= agent.y + AGENT_SIZE < vision_range[1][1]]
+        # print("observed agents: ", observed)
+        return observed
     
     def observe_houses(self, houses):
         return [house for vision_range in self.vision_range for house in houses 
@@ -317,3 +402,52 @@ class Agent(LitterCleaner):
             return time_to_reach_litter > time_to_clean
         
         return True
+    
+    def find_available_way(self, litter, pedestrians, cars, houses):
+        directions = {
+            'up': (0, -1),
+            'down': (0, 1),
+            'left': (-1, 0),
+            'right': (1, 0)
+        }
+
+        def is_collision(new_x, new_y):
+            agent_rect = pygame.Rect(new_x, new_y, AGENT_SIZE, AGENT_SIZE)
+
+            for pedestrian in pedestrians:
+                if agent_rect.colliderect(pedestrian.rect):
+                    return True
+
+            for car in cars:
+                if agent_rect.colliderect(car.rect):
+                    return True
+
+            for house in houses:
+                if agent_rect.colliderect(house.rect):
+                    return True
+
+            return False
+
+        if litter.x > self.x and litter.y > self.y:
+            preferred_directions = ['down', 'right']
+        elif litter.x < self.x and litter.y < self.y:
+            preferred_directions = ['up', 'left']
+        elif litter.x > self.x and litter.y < self.y:
+            preferred_directions = ['up', 'right']
+        else:  # litter.x < x and litter.y > y
+            preferred_directions = ['down', 'left']
+
+        for direction in preferred_directions:
+            dx, dy = directions[direction]
+            new_x, new_y = self.x + dx, self.y + dy
+            if not is_collision(new_x, new_y):
+                return direction
+
+        # 如果所有偏好的方向都被阻挡，尝试其他方向
+        for direction in directions:
+            dx, dy = directions[direction]
+            new_x, new_y = self.x + dx, self.y + dy
+            if not is_collision(new_x, new_y):
+                return direction
+
+        return None  # 如果所有方向都被阻挡，返回 None

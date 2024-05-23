@@ -25,26 +25,26 @@ def calculate_time_to_reach(litter, moving_object, speed):
 def is_litter_in_pedestrian_path(observed_pedestrians, litter):
     for pedestrian in observed_pedestrians:
         if (litter.y > pedestrian.y and 
-            ((pedestrian.x <= litter.x < pedestrian.x + PEDESTRIAN_SIZE) or
-            (pedestrian.x <= litter.x + LITTER_SIZE <= pedestrian.x + PEDESTRIAN_SIZE)) and 
+            ((pedestrian.x <= litter.x < pedestrian.x + PEDESTRIAN_SIZE[0]) or
+            (pedestrian.x <= litter.x + LITTER_SIZE <= pedestrian.x + PEDESTRIAN_SIZE[0])) and 
             pedestrian.direction == "down"):
             return pedestrian
         
         if (litter.y < pedestrian.y and 
-            ((pedestrian.x <= litter.x < pedestrian.x + PEDESTRIAN_SIZE) or
-            (pedestrian.x <= litter.x + LITTER_SIZE <= pedestrian.x + PEDESTRIAN_SIZE)) and 
+            ((pedestrian.x <= litter.x < pedestrian.x + PEDESTRIAN_SIZE[0]) or
+            (pedestrian.x <= litter.x + LITTER_SIZE <= pedestrian.x + PEDESTRIAN_SIZE[0])) and 
             pedestrian.direction == "up"):
             return pedestrian
         
         if (litter.x < pedestrian.x and 
-            ((pedestrian.y <= litter.y < pedestrian.y + PEDESTRIAN_SIZE) or
-            (pedestrian.y <= litter.y + LITTER_SIZE <= pedestrian.y + PEDESTRIAN_SIZE)) and 
+            ((pedestrian.y <= litter.y < pedestrian.y + PEDESTRIAN_SIZE[0]) or
+            (pedestrian.y <= litter.y + LITTER_SIZE <= pedestrian.y + PEDESTRIAN_SIZE[0])) and 
             pedestrian.direction == "left"):
             return pedestrian
         
         if (litter.x > pedestrian.x and 
-            ((pedestrian.y <= litter.y < pedestrian.y + PEDESTRIAN_SIZE) or
-            (pedestrian.y <= litter.y + LITTER_SIZE <= pedestrian.y + PEDESTRIAN_SIZE)) and 
+            ((pedestrian.y <= litter.y < pedestrian.y + PEDESTRIAN_SIZE[0]) or
+            (pedestrian.y <= litter.y + LITTER_SIZE <= pedestrian.y + PEDESTRIAN_SIZE[0])) and 
             pedestrian.direction == "right"):
             return pedestrian
     return None
@@ -199,51 +199,4 @@ def is_litter_in_car_path(observed_cars, litter):
 #     # If all directions are blocked, return None
 #     return None
 
-def find_available_way(litter, x, y, pedestrians, cars, houses):
-    directions = {
-        'up': (0, -1),
-        'down': (0, 1),
-        'left': (-1, 0),
-        'right': (1, 0)
-    }
 
-    def is_collision(new_x, new_y):
-        agent_rect = pygame.Rect(new_x, new_y, AGENT_SIZE[0], AGENT_SIZE[1])
-
-        for pedestrian in pedestrians:
-            if agent_rect.colliderect(pedestrian.rect):
-                return True
-
-        for car in cars:
-            if agent_rect.colliderect(car.rect):
-                return True
-
-        for house in houses:
-            if agent_rect.colliderect(house.rect):
-                return True
-
-        return False
-
-    if litter.x > x and litter.y > y:
-        preferred_directions = ['down', 'right']
-    elif litter.x < x and litter.y < y:
-        preferred_directions = ['up', 'left']
-    elif litter.x > x and litter.y < y:
-        preferred_directions = ['up', 'right']
-    else:  # litter.x < x and litter.y > y
-        preferred_directions = ['down', 'left']
-
-    for direction in preferred_directions:
-        dx, dy = directions[direction]
-        new_x, new_y = x + dx, y + dy
-        if not is_collision(new_x, new_y):
-            return direction
-
-    # 如果所有偏好的方向都被阻挡，尝试其他方向
-    for direction in directions:
-        dx, dy = directions[direction]
-        new_x, new_y = x + dx, y + dy
-        if not is_collision(new_x, new_y):
-            return direction
-
-    return None  # 如果所有方向都被阻挡，返回 None
