@@ -21,3 +21,11 @@ class Litter:
 
     def clean(self):
         self.weight -= 1
+
+    def __hash__(self):
+        return hash((self.x, self.y, self.weight))
+    
+    def __eq__(self, value: object) -> bool:
+        if isinstance(value, Litter):
+            return self.x == value.x and self.y == value.y and self.weight == value.weight
+        return False

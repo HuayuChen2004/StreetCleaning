@@ -115,7 +115,9 @@ def main():
         random_road = road_yranges[road_index]
         # let the agent land on the road
         y_position = random_road[0] 
-        x_position = random.randint(0, WIDTH - AGENT_SIZE)
+        available_xranges = [[x, x + HOUSE_SIZE] for x in range(0, WIDTH - 2 * HOUSE_SIZE, 2 * HOUSE_SIZE)]
+        xrange = random.choice(available_xranges)
+        x_position = random.randint(xrange[0], xrange[1] - AGENT_SIZE)
         # Check if the agent would overlap with a car, pedestrian or house
         for house in houses:
             if house.rect.collidepoint(x_position, y_position):
@@ -149,11 +151,15 @@ def main():
         # 更新车辆和行人位置
         for car in cars:
             car.move(traffic_light, left_time)
+            # litter_x = random.randint(car.x, car.x + CAR_LENGTH)
+            # litter_y = random.randint(car.y, car.y + CAR_WIDTH)
             litter = car.generate_litter(car.x, car.y)
             if litter:
                 litters.append(litter)
         for pedestrian in pedestrians:
             pedestrian.move(traffic_light, left_time)
+            # litter_x = random.randint(pedestrian.x - 3, pedestrian.x + PEDESTRIAN_SIZE[0] + 3)
+            # litter_y = random.randint(pedestrian.y - 3, pedestrian.y + PEDESTRIAN_SIZE[1] + 3)
             litter = pedestrian.generate_litter(pedestrian.x, pedestrian.y)
             if litter:
                 litters.append(litter)

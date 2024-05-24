@@ -12,7 +12,7 @@ class Pedestrian(LitterGenerator):
         self.x = x
         self.y = y
         self.rect = pygame.Rect(x, y, *PEDESTRIAN_SIZE)
-        self.speed = random.choice([1.25, 0.75])
+        self.speed = 1
         self.direction = direction  # 行人的移动方向，可以是 'up'、'down'、'left' 或 'right'
         self.moving = True
         self.litter_prob = litter_prob

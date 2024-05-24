@@ -14,5 +14,16 @@ class LitterGenerator:
         self.direction = direction
 
     def generate_litter(self, x, y):
-        litter_weight = random.randint(1, 3)
+        if not self.is_on_road(x, y):
+            return None
+        litter_weight = random.randint(5, 10)
         return Litter(x, y, litter_weight)
+    
+    def is_on_road(self, x, y):
+        for x_range in road_xranges:
+            if x_range[0] <= x and x + LITTER_SIZE <= x_range[1]:
+                return True
+        for y_range in road_yranges:
+            if y_range[0] <= y and y + LITTER_SIZE <= y_range[1]:
+                return True
+        return False
