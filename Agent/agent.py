@@ -20,6 +20,7 @@ class Agent(LitterCleaner):
         self.is_crossing = False
         self.crossing_direction = None
         self.rect = pygame.Rect(x, y, AGENT_SIZE, AGENT_SIZE)
+        self.preferred_directions = []
         # print("self.vision range: ", self.vision_range)
         # exit()
 
@@ -144,7 +145,7 @@ class Agent(LitterCleaner):
         elif not direction:
             pass
         else:
-            raise ValueError("unusual direction!")
+            pass
 
         # Check if the agent is out of the screen
         if self.x < 0:
@@ -327,14 +328,16 @@ class Agent(LitterCleaner):
             traffic_light)
         # print("direction: ", self.direction)
         if self.direction:
-            print("direction: ", self.direction)
+            # print("direction: ", self.direction)
             self.move(self.direction)
         else:
-            print("no direction!")
-            if not self.is_place_safe(cars):
+            # print("no direction!")
+            if not self.is_place_safe():
                 print("place not safe!")
                 self.move_to_side()
         if self.is_litter_covered(litter):
+            self.preferred_directions = []
+            self.direction = None
             litter.clean()
     
     def start_cleaning(self, litters, pedestrians, cars, agents, houses, traffic_light):
@@ -343,6 +346,7 @@ class Agent(LitterCleaner):
             self.vision_range.append([[agent.x - VISION_SIZE, agent.x + AGENT_SIZE + VISION_SIZE], 
                                         [agent.y - VISION_SIZE, agent.y + AGENT_SIZE + VISION_SIZE]])
         if not self.observe_litters(litters):
+            # print("no litter found!")
             self.wander(traffic_light, houses)
 
         else:
@@ -429,15 +433,16 @@ class Agent(LitterCleaner):
     
     def find_available_way(self, litter, pedestrians, cars, houses, traffic_light):
         directions = {
-            'up': (0, -1),
-            'down': (0, 1),
-            'left': (-1, 0),
-            'right': (1, 0)
+            'up': (0, -self.speed),
+            'down': (0, self.speed),
+            'left': (-self.speed, 0),
+            'right': (self.speed, 0)
         }
-        if litter.x == self.x and litter.y == self.y:
+        if self.is_litter_covered(litter):
+            print("litter is covered!")
             return None  # 自己在同一位置，不能再清理
 
-        def is_collision(new_x, new_y, shrink_size=1):
+        def is_collision(new_x, new_y, shrink_size=2):
             agent_rect = pygame.Rect(new_x + shrink_size, new_y + shrink_size, 
                                      AGENT_SIZE - 2 * shrink_size, AGENT_SIZE - 2 * shrink_size)
             # for pedestrian in pedestrians:
@@ -450,39 +455,58 @@ class Agent(LitterCleaner):
                 if agent_rect.colliderect(house.rect):
                     return True
             return False
-
+        
         if litter.x > self.x and litter.y > self.y:
-            preferred_directions = ['down', 'right']
+            self.preferred_directions = ['down', 'right']
         elif litter.x < self.x and litter.y < self.y:
-            preferred_directions = ['up', 'left']
+            self.preferred_directions = ['up', 'left']
         elif litter.x > self.x and litter.y < self.y:
-            preferred_directions = ['up', 'right']
+            self.preferred_directions = ['up', 'right']
         elif litter.x < self.x and litter.y > self.y:
-            preferred_directions = ['down', 'left']
+            self.preferred_directions = ['down', 'left']
         elif litter.x == self.x and litter.y > self.y:
-            preferred_directions = ['down']
+            self.preferred_directions = ['down']
         elif litter.x == self.x and litter.y < self.y:
-            preferred_directions = ['up']
+            self.preferred_directions = ['up']
         elif litter.x > self.x and litter.y == self.y:
-            preferred_directions = ['right']
+            self.preferred_directions = ['right']
         elif litter.x < self.x and litter.y == self.y:
-            preferred_directions = ['left']
+            self.preferred_directions = ['left']
+        self.preferred_directions = [direction for direction in self.preferred_directions if not self.is_car_in_direction(litter, cars, direction)]
 
-        preferred_directions = [direction for direction in preferred_directions if not self.is_car_in_direction(litter, cars, direction)]
+        # if not self.preferred_directions:
+        #     if litter.x + LITTER_SIZE > self.x + AGENT_SIZE and litter.y + LITTER_SIZE > self.y + AGENT_SIZE:
+        #         self.preferred_directions = ['down', 'right']
+        #     elif litter.x < self.x and litter.y < self.y:
+        #         self.preferred_directions = ['up', 'left']
+        #     elif litter.x + LITTER_SIZE > self.x + AGENT_SIZE and litter.y < self.y:
+        #         self.preferred_directions = ['up', 'right']
+        #     elif litter.x < self.x and litter.y + LITTER_SIZE > self.y + AGENT_SIZE:
+        #         self.preferred_directions = ['down', 'left']
+        #     elif litter.x >= self.x and litter.x + LITTER_SIZE <= self.x + AGENT_SIZE and litter.y + LITTER_SIZE > self.y + AGENT_SIZE:
+        #         self.preferred_directions = ['down']
+        #     elif litter.x >= self.x and litter.x + LITTER_SIZE <= self.x + AGENT_SIZE and litter.y < self.y:
+        #         self.preferred_directions = ['up']
+        #     elif litter.x + LITTER_SIZE > self.x + AGENT_SIZE and litter.y >= self.y and litter.y + LITTER_SIZE <= self.y + AGENT_SIZE:
+        #         self.preferred_directions = ['right']
+        #     elif litter.x < self.x and litter.y >= self.y and litter.y + LITTER_SIZE <= self.y + AGENT_SIZE:
+        #         self.preferred_directions = ['left']
 
-        for direction in preferred_directions:
+        self.preferred_directions = [direction for direction in self.preferred_directions if not self.is_car_in_direction(litter, cars, direction)]
+
+        # print("prefered direction: ", self.preferred_directions)
+
+        for direction in self.preferred_directions:
             dx, dy = directions[direction]
             new_x, new_y = self.x + dx, self.y + dy
             if not is_collision(new_x, new_y):
+                # print("not collision!")
+                if self.can_ignore_light(litter):
+                    print("can ignore light!")
+                    return direction
                 if traffic_light == 'horizontal' and direction in ['up', 'down']:
-                    if self.can_ignore_light(direction, litter):
-                        return direction
-                    else:
                         continue
                 elif traffic_light == 'vertical' and direction in ['left', 'right']:
-                    if self.can_ignore_light(direction, litter):
-                        return direction
-                    else:
                         continue
                 else:
                     return direction
@@ -500,29 +524,18 @@ class Agent(LitterCleaner):
         
         return None  # 如果所有方向都被阻挡，返回 None
     
-    def is_place_safe(self, cars):
+    def is_place_safe(self):
         road_xranges = [(x + HOUSE_SIZE, x + HOUSE_SIZE * 2) for x in range(0, WIDTH - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
         road_yranges = [(y + HOUSE_SIZE, y + HOUSE_SIZE * 2) for y in range(0, HEIGHT - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
         self.rect = pygame.Rect(self.x, self.y, AGENT_SIZE, AGENT_SIZE)
-        for car in self.observe_cars(cars):
-            if car.rect.colliderect(self.rect):
+        for xrange in road_xranges:
+            if xrange[0] + ROAD_WIDTH/2 - CAR_WIDTH/2 <= self.x + AGENT_SIZE and \
+                self.x <= xrange[1] - ROAD_WIDTH/2 + CAR_WIDTH/2:
                 return False
-            if car.direction == 'right' and car.x < self.x:
-                for y_range in road_yranges:
-                    if y_range[0] <= self.y <= y_range[1] and y_range[0] <= car.y <= y_range[1]:
-                        return False
-            elif car.direction == 'left' and car.x > self.x:
-                for y_range in road_yranges:
-                    if y_range[0] <= self.y <= y_range[1] and y_range[0] <= car.y <= y_range[1]:
-                        return False
-            elif car.direction == 'up' and car.y < self.y:
-                for x_range in road_xranges:
-                    if x_range[0] <= self.x <= x_range[1] and x_range[0] <= car.x <= x_range[1]:
-                        return False
-            elif car.direction == 'down' and car.y > self.y:
-                for x_range in road_xranges:
-                    if x_range[0] <= self.x <= x_range[1] and x_range[0] <= car.x <= x_range[1]:
-                        return False
+        for yrange in road_yranges:
+            if yrange[0] + ROAD_WIDTH/2 - CAR_WIDTH/2 <= self.y + AGENT_SIZE and \
+                self.y <= yrange[1] - ROAD_WIDTH/2 + CAR_WIDTH/2:
+                return False
         return True
                         
     def is_car_in_direction(self, litter, cars, direction):
@@ -573,25 +586,16 @@ class Agent(LitterCleaner):
         return self.x <= litter.x and litter.x + LITTER_SIZE <= self.x + AGENT_SIZE and \
                 self.y <= litter.y and litter.y + LITTER_SIZE <= self.y + AGENT_SIZE
     
-    def can_ignore_light(self, direction, litter):
-        road_xranges = [(x + HOUSE_SIZE, x + HOUSE_SIZE * 2) for x in range(0, WIDTH - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
-        road_yranges = [(y + HOUSE_SIZE, y + HOUSE_SIZE * 2) for y in range(0, HEIGHT - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
-        if direction in ['up', 'down']:
-            for xrange in road_xranges:
-                if xrange[0] <= litter.x <= xrange[1] - ROAD_WIDTH/2 - CAR_WIDTH / 2 - LITTER_SIZE and \
-                    xrange[0] <= self.x <= xrange[1] - ROAD_WIDTH/2 - AGENT_SIZE:
-                    for yrange in road_yranges:
-                        if yrange[0] - ROAD_WIDTH/2 + CAR_WIDTH/2 <= self.y <= yrange[1] + ROAD_WIDTH/2 - CAR_WIDTH/2 - AGENT_SIZE and \
-                            yrange[0] - ROAD_WIDTH/2 + CAR_WIDTH/2 <= litter.y <= yrange[1] + ROAD_WIDTH/2 - CAR_WIDTH/2 - LITTER_SIZE:
-                            return True
-        elif direction in ['left', 'right']:
-            for yrange in road_yranges:
-                if yrange[0] <= litter.y <= yrange[1] - ROAD_WIDTH/2 - CAR_WIDTH / 2 - LITTER_SIZE and \
-                    yrange[0] <= self.y <= yrange[1] - ROAD_WIDTH/2 - AGENT_SIZE:
-                    for xrange in road_xranges:
-                        if xrange[0] - ROAD_WIDTH/2 + CAR_WIDTH/2 <= self.x <= xrange[1] + ROAD_WIDTH/2 - CAR_WIDTH/2 - AGENT_SIZE and \
-                            xrange[0] - ROAD_WIDTH/2 + CAR_WIDTH/2 <= litter.x <= xrange[1] + ROAD_WIDTH/2 - CAR_WIDTH/2 - LITTER_SIZE:
-                            return True
+    def can_ignore_light(self, litter):
+        road_x_centers = [x + HOUSE_SIZE + ROAD_WIDTH / 2 for x in range(0, WIDTH - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
+        road_y_centers = [y + HOUSE_SIZE + ROAD_WIDTH / 2 for y in range(0, HEIGHT - HOUSE_SIZE * 2, HOUSE_SIZE * 2)]
+        for i in range(len(road_x_centers) - 1):
+            if road_x_centers[i] <= litter.x and litter.x + LITTER_SIZE <= road_x_centers[i + 1] and \
+                road_x_centers[i] <= self.x and self.x + AGENT_SIZE <= road_x_centers[i + 1]:
+                for j in range(len(road_y_centers) - 1):
+                    if road_y_centers[j] <= litter.y and litter.y + LITTER_SIZE <= road_y_centers[j + 1] and \
+                        road_y_centers[j] <= self.y and self.y + AGENT_SIZE <= road_y_centers[j + 1]:
+                        return True
         return False
                     
 

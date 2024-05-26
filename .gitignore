@@ -2,3 +2,12 @@
 *.json
 .vscode/
 */tempCodeRunnerFile.py
+*.py:Zone.Identifier
+*.gitignore:Zone.Identifier
+*/LICENSE
+*/LICENSE:Zone.Identifier
+pytorch-DRL-master/README.md:Zone.Identifier
+pytorch-DRL-master/README.md
+pytorch-DRL-master/.gitignore
+*.png
+*.png:Zone.Identifier

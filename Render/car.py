@@ -18,7 +18,7 @@ class Car(LitterGenerator):
             self.rect = pygame.Rect(x, y, CAR_WIDTH, CAR_LENGTH)
         else:
             raise ValueError("direction should be set (left right up down)")
-        self.speed = 6
+        self.speed = 3
     
     def move(self, traffic_light, left_time):
         if self.direction == 'right':
@@ -92,5 +92,13 @@ class Car(LitterGenerator):
             # litter.draw(screen)
             return litter
         return None
+    
+    def change_speed(self):
+        if self.speed == 3:
+            self.speed = 5
+        elif self.speed == 5:
+            self.speed = 3
+        else:
+            self.speed = random.choice([3, 5])
 
 

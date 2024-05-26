@@ -9,7 +9,7 @@ from Agent.agent import Agent
 # parameters
 num_cars = 8
 num_pedestrians = 15
-num_agent = 1
+num_agent = 3
 traffic_light = 'horizontal'
 light_duration = 300  # Duration of each traffic light in frames
 
@@ -20,6 +20,9 @@ def main():
 
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("blocks")
+
+    CHANGE_SPEED_EVENT = pygame.USEREVENT + 1
+    pygame.time.set_timer(CHANGE_SPEED_EVENT, 10000)
 
     houses = [House(x, y) for x in range(0, WIDTH, HOUSE_SIZE * 2) 
             for y in range(0, HEIGHT, HOUSE_SIZE * 2)]
@@ -107,6 +110,7 @@ def main():
                                         litter_prob))
             count += 1
     count = 0
+    road_sides = {(i, side): False for i in range(len(road_yranges)) for side in ['left', 'right']}
     while count < num_agent:
         available_roads = [i for i in range(len(road_yranges)) if not road_sides[(i, 'left')]]
         if not available_roads:
@@ -125,9 +129,9 @@ def main():
         for car in cars:
             if car.rect.collidepoint(x_position, y_position):
                 continue
-        for pedestrian in pedestrians:
-            if pedestrian.rect.collidepoint(x_position, y_position):
-                continue
+        # for pedestrian in pedestrians:
+        #     if pedestrian.rect.collidepoint(x_position, y_position):
+        #         continue
         agent = Agent(x_position, y_position)
         agents.append(agent)
         road_sides[(road_index, 'left')] = True
@@ -144,12 +148,16 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            if event.type == CHANGE_SPEED_EVENT:
+                for car in cars:
+                    car.change_speed()
 
         # 计算剩余时间
         left_time = light_duration - (frame_count % light_duration)
 
         # 更新车辆和行人位置
         for car in cars:
+            car.speed = random.choice([3, 4, 5])
             car.move(traffic_light, left_time)
             # litter_x = random.randint(car.x, car.x + CAR_LENGTH)
             # litter_y = random.randint(car.y, car.y + CAR_WIDTH)
