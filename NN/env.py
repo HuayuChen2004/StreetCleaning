@@ -13,39 +13,83 @@ class StreetCleaningEnv(gym.Env):
         self.num_garbage = num_garbage
         self.grid = np.zeros((self.width, self.height), dtype=np.uint8)
         self.action_space = spaces.Discrete(5)  # 5 actions: up, down, left, right, clean
-        self.observation_space = spaces.Box(low=0, high=3, shape=(num_agents, self.height, self.width), dtype=np.uint8)
-        
+        observation_dim = (2*VISION_SIZE+AGENT_SIZE) ** 2
+        self.observation_space = spaces.Box(low=0, high=3, shape=(num_agents, observation_dim), dtype=np.uint8)
         self.reset()
         
     def reset(self):
+        self.agents_pos = []
+        self.garbage_pos = []
+        self.grid = np.zeros((self.width, self.height), dtype=np.uint8)
         self.set_houses()
         self.set_agents()
         self.set_garbage()
         self.done = False
         return self._get_obs()
     
+    def _get_local_obs(self, agent_pos):
+        x, y = agent_pos
+        observed_grid = np.full((2*VISION_SIZE+AGENT_SIZE, 2*VISION_SIZE+AGENT_SIZE), fill_value=DEFAULT_FILLING_VALUE)
+        
+        # Calculate the ranges for the observed grid
+        grid_start_x = max(0, VISION_SIZE - x)
+        grid_end_x = min(2 * VISION_SIZE + AGENT_SIZE, self.width + VISION_SIZE - x)
+        grid_start_y = max(0, VISION_SIZE - y)
+        grid_end_y = min(2 * VISION_SIZE + AGENT_SIZE, self.height + VISION_SIZE - y)
+        
+        # Calculate the ranges for the actual grid
+        obs_start_x = max(x - VISION_SIZE, 0)
+        obs_end_x = min(x + VISION_SIZE + AGENT_SIZE, self.width)
+        obs_start_y = max(y - VISION_SIZE, 0)
+        obs_end_y = min(y + VISION_SIZE + AGENT_SIZE, self.height)
+        
+        # Assign the observed values to the grid
+        observed_grid[grid_start_x:grid_end_x, grid_start_y:grid_end_y] = self.grid[obs_start_x:obs_end_x, obs_start_y:obs_end_y]
+        # print("local observation shape:", observed_grid.flatten().shape)
+        return observed_grid.flatten()
+
+    
     def _get_obs(self):
-        return np.concatenate([self.agents_pos, self.garbage_pos], axis=0)
+        return np.array([self._get_local_obs(agent_pos) for agent_pos in self.agents_pos])
+    
     
     def step(self, action):
+        # multi-agent step
+        # action is a list of actions for each agent
         rewards = np.zeros(self.num_agents)
-        i = 0  # Assuming agent index is 0
-        if action == 0:  # up
-            self.agents_pos[i][1] = max(self.agents_pos[i][1] - 1, 0)
-        elif action == 1:  # down
-            self.agents_pos[i][1] = min(self.agents_pos[i][1] + 1, self.grid_size - 1)
-        elif action == 2:  # left
-            self.agents_pos[i][0] = max(self.agents_pos[i][0] - 1, 0)
-        elif action == 3:  # right
-            self.agents_pos[i][0] = min(self.agents_pos[i][0] + 1, self.grid_size - 1)
-        elif action == 4:  # clean
-            for j, g_pos in enumerate(self.garbage_pos):
-                if np.array_equal(self.agents_pos[i], g_pos):
+        for i, agent_pos in enumerate(self.agents_pos):
+            x, y = agent_pos
+            if action[i] == 0 and y > 0 and self.grid[x][y-1] != 1:  # up
+                if self.grid[x][y-1] == 3:
+                    self.garbage_pos.remove([x, y-1])
                     rewards[i] += 1
-                    self.garbage_pos = np.delete(self.garbage_pos, j, axis=0)
-                    break
-        self.done = len(self.garbage_pos) == 0
+                self.grid[x][y] = 0
+                self.grid[x][y-1] = 2
+                self.agents_pos[i] = [x, y-1]
+            elif action[i] == 1 and y < self.height-1 and self.grid[x][y+1] != 1:  # down
+                if self.grid[x][y+1] == 3:
+                    self.garbage_pos.remove([x, y+1])
+                    rewards[i] += 1
+                self.grid[x][y] = 0
+                self.grid[x][y+1] = 2
+                self.agents_pos[i] = [x, y+1]
+            elif action[i] == 2 and x > 0 and self.grid[x-1][y] != 1:  # left
+                if self.grid[x-1][y] == 3:
+                    self.garbage_pos.remove([x-1, y])
+                    rewards[i] += 1
+                self.grid[x][y] = 0
+                self.grid[x-1][y] = 2
+                self.agents_pos[i] = [x-1, y]
+            elif action[i] == 3 and x < self.width-1 and self.grid[x+1][y] != 1:  # right
+                if self.grid[x+1][y] == 3:
+                    self.garbage_pos.remove([x+1, y])
+                    rewards[i] += 1
+                self.grid[x][y] = 0
+                self.grid[x+1][y] = 2
+                self.agents_pos[i] = [x+1, y]
+        self.done = np.full(self.num_agents, len(self.garbage_pos) == 0)
         return self._get_obs(), rewards, self.done, {}
+            
     
     def set_houses(self):
         for x in range(0, WIDTH, HOUSE_SIZE * 2):
@@ -92,3 +136,13 @@ class StreetCleaningEnv(gym.Env):
             raise ValueError("mode should be 'human' or 'rgb_array'")
 
 env = StreetCleaningEnv(num_agents=3, num_garbage=20)
+env.reset()
+# print("agent positions:", env.agents_pos)
+# print("get_observation:", env._get_obs())
+# print("observation shape:", env._get_obs().shape)
+
+
+
+# 清理需要一定时间
+# 1的地方走不了，只能stay
+

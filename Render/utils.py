@@ -19,3 +19,5 @@ BLUE = (0, 0, 255)
 GREEN = (0, 255, 0)
 
 DIRECTIONS = ['up', 'down', 'left', 'right']
+
+DEFAULT_FILLING_VALUE = 0

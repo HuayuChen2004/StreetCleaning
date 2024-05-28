@@ -236,3 +236,64 @@ class MAA2C(Agent):
             else:
                 values[agent_id] = value_var.data.numpy()[0]
         return values
+    
+if __name__ == "__main__":
+    from NN.env import StreetCleaningEnv  # 确保导入正确的环境
+
+    # 初始化参数
+    n_agents = 3
+    num_garbage = 10
+
+    # 创建环境实例
+    env = StreetCleaningEnv(num_agents=n_agents, num_garbage=num_garbage)
+    
+    # 提取状态和动作的维度
+    state_dim = env.observation_space.shape[1]
+    # print("state_dim", state_dim)
+    # exit()
+    action_dim = env.action_space.n
+    
+    # 创建MAA2C代理实例
+    a2c = MAA2C(
+        env=env, 
+        n_agents=n_agents, 
+        state_dim=state_dim, 
+        action_dim=action_dim,
+        memory_capacity=10000, 
+        max_steps=50000, 
+        roll_out_n_steps=10, 
+        reward_gamma=0.99, 
+        reward_scale=1.0, 
+        done_penalty=None,
+        actor_hidden_size=32, 
+        critic_hidden_size=32, 
+        actor_output_act=nn.functional.log_softmax, 
+        critic_loss="mse",
+        actor_lr=0.001, 
+        critic_lr=0.001, 
+        optimizer_type="rmsprop", 
+        entropy_reg=0.01, 
+        max_grad_norm=0.5, 
+        batch_size=100, 
+        episodes_before_train=100, 
+        epsilon_start=0.9, 
+        epsilon_end=0.01, 
+        epsilon_decay=200, 
+        use_cuda=True, 
+        training_strategy="cocurrent", 
+        actor_parameter_sharing=False, 
+        critic_parameter_sharing=False
+    )
+    
+    # 训练循环
+    num_episodes = 1000  # 设定需要训练的回合数
+    for episode in range(num_episodes):
+        a2c.interact()  # 交互以收集经验
+        a2c.train()  # 在批量上进行训练
+        
+        if episode % 100 == 0:  # 每100回合打印一次结果
+            print(f"Episode {episode}/{num_episodes} completed")
+    
+    # 绘制结果
+    a2c.plot_result()
+
