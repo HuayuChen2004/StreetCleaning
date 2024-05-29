@@ -11,3 +11,5 @@ pytorch-DRL-master/README.md
 pytorch-DRL-master/.gitignore
 *.png
 *.png:Zone.Identifier
+*/__pycache__
+*.txt

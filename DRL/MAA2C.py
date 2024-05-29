@@ -9,6 +9,10 @@ from common.Agent import Agent
 from common.Model import ActorNetwork, CriticNetwork
 from common.utils import entropy, index_to_one_hot, to_tensor_var
 
+import matplotlib.pyplot as plt
+import os
+import time
+import datetime
 
 class MAA2C(Agent):
     """
@@ -237,15 +241,57 @@ class MAA2C(Agent):
                 values[agent_id] = value_var.data.numpy()[0]
         return values
     
+    def evaluation(self, env, eval_episodes=10):
+        rewards = []
+        infos = []
+        for i in range(eval_episodes):
+            rewards_i = []
+            infos_i = []
+            state = env.reset()
+            done = False
+            
+            while not np.all(done):
+                # 获取动作
+                actions = []
+                for agent_id in range(self.n_agents):
+                    state_var = to_tensor_var(state, self.use_cuda).view(-1, self.n_agents, self.state_dim)
+                    if not th.isfinite(state_var).all():
+                        print(f"Invalid state_var detected: {state_var}")
+                        raise ValueError(f"Invalid state_var: {state_var}")
+                    action_log_prob = self.actors[agent_id](state_var[:, agent_id, :])
+                    action_prob = th.exp(action_log_prob)
+                    action_prob = action_prob.clamp(min=1e-12, max=1-1e-12)
+                    if th.any(action_prob.isnan()) or th.any(action_prob.isinf()) or th.any(action_prob < 0):
+                        print("Invalid action_prob:", action_prob)
+                        print("action_log_prob:", action_log_prob)
+                    action = action_prob.multinomial(1).cpu().numpy()
+                    actions.append(action)
+                actions = np.array(actions).squeeze()
+
+                # 环境步进
+                state, reward, done, info = env.step(actions)
+                done = done[0] if isinstance(done, list) else done
+
+                rewards_i.append(reward)
+                infos_i.append(info)
+
+            rewards.append(np.sum(rewards_i))  # 计算每个回合的总奖励
+            infos.append(infos_i)
+
+        return rewards, infos
+
+    
 if __name__ == "__main__":
     from NN.env import StreetCleaningEnv  # 确保导入正确的环境
 
     # 初始化参数
-    n_agents = 3
-    num_garbage = 10
+    n_agents = 10
+    num_garbage = 300
 
     # 创建环境实例
     env = StreetCleaningEnv(num_agents=n_agents, num_garbage=num_garbage)
+    eval_env_map = env.get_initial_map()
+    eval_env = StreetCleaningEnv(num_agents=n_agents, num_garbage=num_garbage, fixed_map=eval_env_map)
     
     # 提取状态和动作的维度
     state_dim = env.observation_space.shape[1]
@@ -285,15 +331,50 @@ if __name__ == "__main__":
         critic_parameter_sharing=False
     )
     
+    # 初始化存储结果的列表
+    episodes = []
+    eval_rewards = []
+
     # 训练循环
-    num_episodes = 1000  # 设定需要训练的回合数
+    num_episodes = 500  # 设定需要训练的回合数
     for episode in range(num_episodes):
         a2c.interact()  # 交互以收集经验
         a2c.train()  # 在批量上进行训练
         
-        if episode % 100 == 0:  # 每100回合打印一次结果
-            print(f"Episode {episode}/{num_episodes} completed")
+        if (episode+1) % 100 == 0:  # 每100回合打印一次结果
+            print(f"Episode {episode+1}/{num_episodes} completed")
     
+        # 每个回合结束后，评估模型并保存结果
+        if (episode+1) % 100 == 0:  # 每100回合评估一次
+            rewards, _ = a2c.evaluation(eval_env)  # 使用你的环境来评估模型
+            rewards_mu = np.mean(rewards)
+            print("Episode %d, Average Reward %.2f" % (episode+1, rewards_mu))
+            time.sleep(1)
+            episodes.append(episode+1)
+            eval_rewards.append(rewards_mu)
+    
+    # 将结果转换为numpy数组
+    episodes = np.array(episodes)
+    eval_rewards = np.array(eval_rewards)
+
+    # 创建output目录，如果它不存在的话
+    if not os.path.exists('./output'):
+        os.makedirs('./output')
+    # 获取当前时间并转换为字符串
+    now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+
+    np.savetxt(f"./output/{now}/MAA2C_episodes.txt", episodes)
+    np.savetxt(f"./output/{now}/MAA2C_eval_rewards.txt", eval_rewards)
+    print("eval_rewards:", eval_rewards)
+
     # 绘制结果
-    a2c.plot_result()
+    plt.figure()
+    plt.plot(episodes, eval_rewards)
+    plt.title("MAA2C")
+    plt.xlabel("Episode")
+    plt.ylabel("Average Reward")
+    plt.legend(["A2C"])
+    plt.savefig(f"./output/{now}/MAA2C.png")
+
+    print("end training!")
 
