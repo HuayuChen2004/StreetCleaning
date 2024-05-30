@@ -1,17 +1,27 @@
 import numpy as np
 import gym
 from gym import spaces
-from Render.utils import *
 import matplotlib.pyplot as plt
+from Render.utils import *
+
+HEIGHT = 54
+WIDTH = 78
+AGENT_SIZE = 1
+VISION_SIZE = 5
+MAX_EPISODE_LENGTH = 100
+DEFAULT_FILLING_VALUE = 0
+HOUSE_SIZE = 6
+LITTER_SIZE = 1
 
 class StreetCleaningEnv(gym.Env):
-    def __init__(self, num_agents, num_garbage, fixed_map=None):
+    def __init__(self, num_agents, num_garbage, fixed_map=None, render=False):
         super(StreetCleaningEnv, self).__init__()
         self.num_agents = num_agents
         self.height = HEIGHT
         self.width = WIDTH
         self.num_garbage = num_garbage
         self.fixed_map = fixed_map
+        self.is_render = render
         self.action_space = spaces.Discrete(4)  # 4 actions: up, down, left, right
         observation_dim = (2*VISION_SIZE+AGENT_SIZE) ** 2
         self.observation_space = spaces.Box(low=0, high=3, shape=(num_agents, observation_dim), dtype=np.uint8)
@@ -23,7 +33,7 @@ class StreetCleaningEnv(gym.Env):
         self.agents_pos = []
         self.garbages_pos = []
         if not isinstance(self.fixed_map, np.ndarray):
-            self.grid = np.zeros((self.width, self.height), dtype=np.uint8)
+            self.grid = np.zeros((self.height, self.width), dtype=np.uint8)  # Swap width and height here
             self.set_houses()
             self.set_agents()
             self.set_garbage()
@@ -42,19 +52,18 @@ class StreetCleaningEnv(gym.Env):
         
         # Calculate the ranges for the observed grid
         grid_start_x = max(0, VISION_SIZE - x)
-        grid_end_x = min(2 * VISION_SIZE + AGENT_SIZE, self.width + VISION_SIZE - x)
+        grid_end_x = min(2 * VISION_SIZE + AGENT_SIZE, self.height + VISION_SIZE - x)
         grid_start_y = max(0, VISION_SIZE - y)
-        grid_end_y = min(2 * VISION_SIZE + AGENT_SIZE, self.height + VISION_SIZE - y)
+        grid_end_y = min(2 * VISION_SIZE + AGENT_SIZE, self.width + VISION_SIZE - y)
         
         # Calculate the ranges for the actual grid
         obs_start_x = max(x - VISION_SIZE, 0)
-        obs_end_x = min(x + VISION_SIZE + AGENT_SIZE, self.width)
+        obs_end_x = min(x + VISION_SIZE + AGENT_SIZE, self.height)
         obs_start_y = max(y - VISION_SIZE, 0)
-        obs_end_y = min(y + VISION_SIZE + AGENT_SIZE, self.height)
+        obs_end_y = min(y + VISION_SIZE + AGENT_SIZE, self.width)
         
         # Assign the observed values to the grid
         observed_grid[grid_start_x:grid_end_x, grid_start_y:grid_end_y] = self.grid[obs_start_x:obs_end_x, obs_start_y:obs_end_y]
-        # print("local observation shape:", observed_grid.flatten().shape)
         return observed_grid.flatten()
 
     
@@ -62,9 +71,7 @@ class StreetCleaningEnv(gym.Env):
         return np.array([self._get_local_obs(agent_pos) for agent_pos in self.agents_pos])
     
     
-    def step(self, action):
-        # multi-agent step
-        # action is a list of actions for each agent
+    def step(self, action: list):
         rewards = np.zeros(self.num_agents)
         for i, agent_pos in enumerate(self.agents_pos):
             x, y = agent_pos
@@ -75,7 +82,7 @@ class StreetCleaningEnv(gym.Env):
                 self.grid[x][y] = 0
                 self.grid[x][y-1] = 2
                 self.agents_pos[i] = [x, y-1]
-            elif action[i] == 1 and y < self.height-1 and self.grid[x][y+1] != 1:  # down
+            elif action[i] == 1 and y < self.width-1 and self.grid[x][y+1] != 1:  # down
                 if self.grid[x][y+1] == 3:
                     self.garbages_pos.remove([x, y+1])
                     rewards[i] += 1
@@ -89,7 +96,7 @@ class StreetCleaningEnv(gym.Env):
                 self.grid[x][y] = 0
                 self.grid[x-1][y] = 2
                 self.agents_pos[i] = [x-1, y]
-            elif action[i] == 3 and x < self.width-1 and self.grid[x+1][y] != 1:  # right
+            elif action[i] == 3 and x < self.height-1 and self.grid[x+1][y] != 1:  # right
                 if self.grid[x+1][y] == 3:
                     self.garbages_pos.remove([x+1, y])
                     rewards[i] += 1
@@ -104,19 +111,19 @@ class StreetCleaningEnv(gym.Env):
             
     
     def set_houses(self):
-        for x in range(0, WIDTH, HOUSE_SIZE * 2):
-            for y in range(0, HEIGHT, HOUSE_SIZE * 2):
-                self.grid[x:x+HOUSE_SIZE, y:y+HOUSE_SIZE] = 1
+        for x in range(0, self.width, HOUSE_SIZE * 2):  # Change to width here
+            for y in range(0, self.height, HOUSE_SIZE * 2):  # Change to height here
+                self.grid[y:y+HOUSE_SIZE, x:x+HOUSE_SIZE] = 1  # Swap x and y here
                 
     def set_agents(self):
         count = 0
         while count < self.num_agents:
             x = np.random.randint(0, self.width)
             y = np.random.randint(0, self.height)
-            if self.grid[x][y] == 0:
-                self.grid[x][y] = 2
+            if self.grid[y][x] == 0:  # Swap x and y here
+                self.grid[y][x] = 2  # Swap x and y here
                 count += 1
-        self.agents_pos = np.array([[x, y] for x, y in np.argwhere(self.grid == 2)])
+        self.agents_pos = np.array([[y, x] for y, x in np.argwhere(self.grid == 2)])  # Swap x and y here
         
     def set_garbage(self):
         count = 0
@@ -124,29 +131,24 @@ class StreetCleaningEnv(gym.Env):
         while count < self.num_garbage:
             x = np.random.randint(0, self.width)
             y = np.random.randint(0, self.height)
-            if self.grid[x][y] == 0:
-                self.grid[x][y] = 3
-                self.garbages_pos.append([x, y])
+            if self.grid[y][x] == 0:  # Swap x and y here
+                self.grid[y][x] = 3  # Swap x and y here
+                self.garbages_pos.append([y, x])  # Swap x and y here
                 count += 1
-        # self.garbages_pos = np.array(self.garbages_pos)
         
     def render(self, mode='human', save_path=None):
-        img = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+        img = np.ones((self.height, self.width, 3), dtype=np.uint8) * 255  # Swap width and height here
+
         img[self.grid == 1] = (128, 128, 128)  # houses
         img[self.grid == 2] = (0, 0, 255)  # agents
         img[self.grid == 3] = (0, 0, 0)  # garbage
-
-        for i, agent_pos in enumerate(self.agents_pos):
-            img[agent_pos[0], agent_pos[1], :] = (0, 0, 255)  # agent positions
-        for i, g_pos in enumerate(self.garbages_pos):
-            img[g_pos[0], g_pos[1], :] = (0, 0, 0)  # garbage positions
 
         if mode == 'human':
             plt.imshow(img)
             plt.title('Street Cleaning')
             if save_path:
                 plt.savefig(save_path)
-            plt.show(block=False)
+            plt.show()
             plt.pause(0.1)
             plt.clf()
         elif mode == 'rgb_array':
@@ -157,14 +159,13 @@ class StreetCleaningEnv(gym.Env):
     def get_initial_map(self):
         return self.initial_map
 
-env = StreetCleaningEnv(num_agents=3, num_garbage=20)
-map = env.get_initial_map()
-identical_env = StreetCleaningEnv(num_agents=3, num_garbage=20, fixed_map=map)
-print("identical:", np.all(env.get_initial_map() == identical_env.get_initial_map()))
-
-
-
-
-# 清理需要一定时间
-# 1的地方走不了，只能stay
-
+env = StreetCleaningEnv(num_agents=3, num_garbage=20, render=True)
+# map = env.get_initial_map()
+# identical_env = StreetCleaningEnv(num_agents=3, num_garbage=20, fixed_map=map)
+# print("identical:", np.all(env.get_initial_map() == identical_env.get_initial_map()))
+# print("env.agents_pos:", env.agents_pos)
+# print("env.garbages_pos:", env.garbages_pos)
+print("agent places:", np.argwhere(env.grid == 2))
+print("garbage places:", np.argwhere(env.grid == 3))
+# exit()
+env.render()

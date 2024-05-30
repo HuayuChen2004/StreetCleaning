@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import os
 import time
 import datetime
+import pygame
 
 class MAA2C(Agent):
     """
@@ -81,7 +82,8 @@ class MAA2C(Agent):
         self.actor_parameter_sharing = actor_parameter_sharing
         self.critic_parameter_sharing = critic_parameter_sharing
 
-        self.actors = [ActorNetwork(self.state_dim, self.actor_hidden_size, self.action_dim, self.actor_output_act)] * self.n_agents
+        self.actors = [ActorNetwork(self.state_dim, self.actor_hidden_size, self.action_dim, self.actor_output_act) for _ in range(self.n_agents)]
+
         if self.training_strategy == "cocurrent":
             self.critics = [CriticNetwork(self.state_dim, self.action_dim, self.critic_hidden_size, 1)] * self.n_agents
         elif self.training_strategy == "centralized":
@@ -89,11 +91,12 @@ class MAA2C(Agent):
             critic_action_dim = self.n_agents * self.action_dim
             self.critics = [CriticNetwork(critic_state_dim, critic_action_dim, self.critic_hidden_size, 1)] * self.n_agents
         if optimizer_type == "adam":
-            self.actor_optimizers = [Adam(a.parameters(), lr=self.actor_lr) for a in self.actors]
-            self.critic_optimizers = [Adam(c.parameters(), lr=self.critic_lr) for c in self.critics]
+            self.actor_optimizers = [Adam(self.actors[i].parameters(), lr=self.actor_lr) for i in range(self.n_agents)]
+            self.critic_optimizers = [Adam(self.critics[i].parameters(), lr=self.critic_lr) for i in range(self.n_agents)]
         elif optimizer_type == "rmsprop":
-            self.actor_optimizers = [RMSprop(a.parameters(), lr=self.actor_lr) for a in self.actors]
-            self.critic_optimizers = [RMSprop(c.parameters(), lr=self.critic_lr) for c in self.critics]
+            self.actor_optimizers = [RMSprop(self.actors[i].parameters(), lr=self.actor_lr) for i in range(self.n_agents)]
+            self.critic_optimizers = [RMSprop(self.critics[i].parameters(), lr=self.critic_lr) for i in range(self.n_agents)]
+
 
         # tricky and memory consumed implementation of parameter sharing
         if self.actor_parameter_sharing:
@@ -241,44 +244,128 @@ class MAA2C(Agent):
                 values[agent_id] = value_var.data.numpy()[0]
         return values
     
-    def evaluation(self, env, eval_episodes=10):
+    def render_pygame(env, screen, window_size):
+        pygame.init()
+        window_size = (800, 600)  # Example size, adjust as needed
+        screen = pygame.display.set_mode(window_size)
+        # Render the environment and get the image
+        img = env.render(mode='rgb_array')
+        img = np.clip(img, 0, 255).astype(np.uint8)
+        # Convert the image to a Pygame surface
+        img_surface = pygame.surfarray.make_surface(img.swapaxes(0, 1))
+        # Scale the image to the window size
+        img_surface = pygame.transform.scale(img_surface, window_size)
+        # Blit the image surface to the screen
+        screen.blit(img_surface, (0, 0))
+        # Update the display
+        pygame.display.flip()
+
+    def evaluation(self, env, eval_episodes=10, render=False, window_size=(800, 600)):
         rewards = []
         infos = []
+
+        if render:
+            pygame.init()
+            screen = pygame.display.set_mode(window_size)
+            pygame.display.set_caption("Environment Render")
+
         for i in range(eval_episodes):
             rewards_i = []
             infos_i = []
             state = env.reset()
-            done = False
-            
+            if env.is_render:
+                self.render_pygame(env, screen, window_size)
+            # state shape: (num_agents, state_dim)
+            action = self.action(state)
+            print("action:", action)
+            # action shape: (num_agents,)
+            state, reward, done, info = env.step(action)
+            if env.is_render:
+                self.render_pygame(env, screen, window_size)
+            done = done[0] if isinstance(done, list) else done
+            rewards_i.append(reward)
+            infos_i.append(info)
             while not np.all(done):
-                # 获取动作
-                actions = []
-                for agent_id in range(self.n_agents):
-                    state_var = to_tensor_var(state, self.use_cuda).view(-1, self.n_agents, self.state_dim)
-                    if not th.isfinite(state_var).all():
-                        print(f"Invalid state_var detected: {state_var}")
-                        raise ValueError(f"Invalid state_var: {state_var}")
-                    action_log_prob = self.actors[agent_id](state_var[:, agent_id, :])
-                    action_prob = th.exp(action_log_prob)
-                    action_prob = action_prob.clamp(min=1e-12, max=1-1e-12)
-                    if th.any(action_prob.isnan()) or th.any(action_prob.isinf()) or th.any(action_prob < 0):
-                        print("Invalid action_prob:", action_prob)
-                        print("action_log_prob:", action_log_prob)
-                    action = action_prob.multinomial(1).cpu().numpy()
-                    actions.append(action)
-                actions = np.array(actions).squeeze()
-
-                # 环境步进
-                state, reward, done, info = env.step(actions)
+                action = self.action(state)
+                state, reward, done, info = env.step(action)
+                if env.is_render:
+                    self.render_pygame(env, screen, window_size)
                 done = done[0] if isinstance(done, list) else done
-
                 rewards_i.append(reward)
                 infos_i.append(info)
-
-            rewards.append(np.sum(rewards_i))  # 计算每个回合的总奖励
+            rewards.append(np.sum(rewards_i))
             infos.append(infos_i)
 
+        if render:
+            pygame.quit()
+
         return rewards, infos
+    
+    # def evaluation(self, env, eval_episodes=10, render=False):
+    #     rewards = []
+    #     infos = []
+    #     for i in range(eval_episodes):
+    #         rewards_i = []
+    #         infos_i = []
+    #         state = env.reset()
+    #         # 渲染初始状态
+    #         if env.is_render:
+    #             env.render()
+    #         # state shape: (num_agents, state_dim)
+    #         action = self.action(state)
+    #         print("action:", action)
+    #         # action shape: (num_agents,)
+    #         state, reward, done, info = env.step(action)
+    #         # 渲染状态
+    #         if env.is_render:
+    #             env.render()
+    #         done = done[0] if isinstance(done, list) else done
+    #         rewards_i.append(reward)
+    #         infos_i.append(info)
+    #         while not np.all(done):
+    #             action = self.action(state)
+    #             state, reward, done, info = env.step(action)
+    #             # 渲染状态
+    #             if env.is_render:
+    #                 env.render()
+    #             done = done[0] if isinstance(done, list) else done
+    #             rewards_i.append(reward)
+    #             infos_i.append(info)
+    #         rewards.append(np.sum(rewards_i))
+    #         infos.append(infos_i)
+    #     return rewards, infos
+
+        #     done = False
+            
+        #     while not np.all(done):
+        #         # 获取动作
+        #         actions = []
+        #         for agent_id in range(self.n_agents):
+        #             state_var = to_tensor_var(state, self.use_cuda).view(-1, self.n_agents, self.state_dim)
+        #             if not th.isfinite(state_var).all():
+        #                 print(f"Invalid state_var detected: {state_var}")
+        #                 raise ValueError(f"Invalid state_var: {state_var}")
+        #             action_log_prob = self.actors[agent_id](state_var[:, agent_id, :])
+        #             action_prob = th.exp(action_log_prob)
+        #             action_prob = action_prob.clamp(min=1e-12, max=1-1e-12)
+        #             if th.any(action_prob.isnan()) or th.any(action_prob.isinf()) or th.any(action_prob < 0):
+        #                 print("Invalid action_prob:", action_prob)
+        #                 print("action_log_prob:", action_log_prob)
+        #             action = action_prob.multinomial(1).cpu().numpy()
+        #             actions.append(action)
+        #         actions = np.array(actions).squeeze()
+
+        #         # 环境步进
+        #         state, reward, done, info = env.step(actions)
+        #         done = done[0] if isinstance(done, list) else done
+
+        #         rewards_i.append(reward)
+        #         infos_i.append(info)
+
+        #     rewards.append(np.sum(rewards_i))  # 计算每个回合的总奖励
+        #     infos.append(infos_i)
+
+        # return rewards, infos
 
     
 if __name__ == "__main__":
@@ -286,12 +373,12 @@ if __name__ == "__main__":
 
     # 初始化参数
     n_agents = 10
-    num_garbage = 300
+    num_garbage = 500
 
     # 创建环境实例
     env = StreetCleaningEnv(num_agents=n_agents, num_garbage=num_garbage)
     eval_env_map = env.get_initial_map()
-    eval_env = StreetCleaningEnv(num_agents=n_agents, num_garbage=num_garbage, fixed_map=eval_env_map)
+    eval_env = StreetCleaningEnv(num_agents=n_agents, num_garbage=num_garbage, fixed_map=eval_env_map, render=True)
     
     # 提取状态和动作的维度
     state_dim = env.observation_space.shape[1]
@@ -336,7 +423,7 @@ if __name__ == "__main__":
     eval_rewards = []
 
     # 训练循环
-    num_episodes = 500  # 设定需要训练的回合数
+    num_episodes = 1000  # 设定需要训练的回合数
     for episode in range(num_episodes):
         a2c.interact()  # 交互以收集经验
         a2c.train()  # 在批量上进行训练
@@ -345,8 +432,8 @@ if __name__ == "__main__":
             print(f"Episode {episode+1}/{num_episodes} completed")
     
         # 每个回合结束后，评估模型并保存结果
-        if (episode+1) % 100 == 0:  # 每100回合评估一次
-            rewards, _ = a2c.evaluation(eval_env)  # 使用你的环境来评估模型
+        if (episode+1) % 1 == 0:  # 每100回合评估一次
+            rewards, infos = a2c.evaluation(env, eval_episodes=10, render=True, window_size=(800, 600))
             rewards_mu = np.mean(rewards)
             print("Episode %d, Average Reward %.2f" % (episode+1, rewards_mu))
             time.sleep(1)
@@ -360,11 +447,18 @@ if __name__ == "__main__":
     # 创建output目录，如果它不存在的话
     if not os.path.exists('./output'):
         os.makedirs('./output')
+    # 创建目录
     # 获取当前时间并转换为字符串
     now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    output_dir = f"./output/{now}"
+    os.makedirs(output_dir, exist_ok=True)
 
-    np.savetxt(f"./output/{now}/MAA2C_episodes.txt", episodes)
-    np.savetxt(f"./output/{now}/MAA2C_eval_rewards.txt", eval_rewards)
+    # 保存文件
+    np.savetxt(f"{output_dir}/MAA2C_episodes.txt", episodes)
+    
+
+    np.savetxt(f"{output_dir}/MAA2C_episodes.txt", episodes)
+    np.savetxt(f"{output_dir}/MAA2C_eval_rewards.txt", eval_rewards)
     print("eval_rewards:", eval_rewards)
 
     # 绘制结果
@@ -374,7 +468,7 @@ if __name__ == "__main__":
     plt.xlabel("Episode")
     plt.ylabel("Average Reward")
     plt.legend(["A2C"])
-    plt.savefig(f"./output/{now}/MAA2C.png")
+    plt.savefig(f"{output_dir}/MAA2C.png")
 
     print("end training!")
 
