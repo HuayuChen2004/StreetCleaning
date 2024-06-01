@@ -244,21 +244,33 @@ class MAA2C(Agent):
                 values[agent_id] = value_var.data.numpy()[0]
         return values
     
-    def render_pygame(env, screen, window_size):
-        pygame.init()
-        window_size = (800, 600)  # Example size, adjust as needed
-        screen = pygame.display.set_mode(window_size)
+    def render_pygame(self, env, screen, window_size):
         # Render the environment and get the image
         img = env.render(mode='rgb_array')
-        img = np.clip(img, 0, 255).astype(np.uint8)
-        # Convert the image to a Pygame surface
-        img_surface = pygame.surfarray.make_surface(img.swapaxes(0, 1))
-        # Scale the image to the window size
-        img_surface = pygame.transform.scale(img_surface, window_size)
-        # Blit the image surface to the screen
-        screen.blit(img_surface, (0, 0))
-        # Update the display
-        pygame.display.flip()
+        if img is None:
+            print("Environment did not return an image.")
+            return
+
+        # Check if the image has three channels (RGB)
+        if img.ndim != 3 or img.shape[2] != 3:
+            print(f"Unexpected image dimensions: {img.shape}")
+            img = np.zeros((window_size[1], window_size[0], 3), dtype=np.uint8)
+        else:
+            # Clip the image values to be between 0 and 255 and ensure correct type
+            img = np.clip(img, 0, 255).astype(np.uint8)
+            # Scale the image to the window size
+            img_surface = pygame.surfarray.make_surface(img.swapaxes(0, 1))
+            img_surface = pygame.transform.scale(img_surface, window_size)
+            # Blit the image surface to the screen
+            screen.blit(img_surface, (0, 0))
+            # Update the display
+            pygame.display.flip()
+
+        # Handle events to allow window to close
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                raise SystemExit
 
     def evaluation(self, env, eval_episodes=10, render=False, window_size=(800, 600)):
         rewards = []
@@ -268,31 +280,29 @@ class MAA2C(Agent):
             pygame.init()
             screen = pygame.display.set_mode(window_size)
             pygame.display.set_caption("Environment Render")
+            clock = pygame.time.Clock()
 
         for i in range(eval_episodes):
             rewards_i = []
             infos_i = []
             state = env.reset()
-            if env.is_render:
-                self.render_pygame(env, screen, window_size)
-            # state shape: (num_agents, state_dim)
-            action = self.action(state)
-            print("action:", action)
-            # action shape: (num_agents,)
-            state, reward, done, info = env.step(action)
-            if env.is_render:
-                self.render_pygame(env, screen, window_size)
-            done = done[0] if isinstance(done, list) else done
-            rewards_i.append(reward)
-            infos_i.append(info)
+            done = np.zeros(self.n_agents)
+
             while not np.all(done):
                 action = self.action(state)
                 state, reward, done, info = env.step(action)
-                if env.is_render:
+                if render:
                     self.render_pygame(env, screen, window_size)
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            pygame.quit()
+                            return 
+                    clock.tick(30)
+
                 done = done[0] if isinstance(done, list) else done
                 rewards_i.append(reward)
                 infos_i.append(info)
+
             rewards.append(np.sum(rewards_i))
             infos.append(infos_i)
 
@@ -300,72 +310,6 @@ class MAA2C(Agent):
             pygame.quit()
 
         return rewards, infos
-    
-    # def evaluation(self, env, eval_episodes=10, render=False):
-    #     rewards = []
-    #     infos = []
-    #     for i in range(eval_episodes):
-    #         rewards_i = []
-    #         infos_i = []
-    #         state = env.reset()
-    #         # 渲染初始状态
-    #         if env.is_render:
-    #             env.render()
-    #         # state shape: (num_agents, state_dim)
-    #         action = self.action(state)
-    #         print("action:", action)
-    #         # action shape: (num_agents,)
-    #         state, reward, done, info = env.step(action)
-    #         # 渲染状态
-    #         if env.is_render:
-    #             env.render()
-    #         done = done[0] if isinstance(done, list) else done
-    #         rewards_i.append(reward)
-    #         infos_i.append(info)
-    #         while not np.all(done):
-    #             action = self.action(state)
-    #             state, reward, done, info = env.step(action)
-    #             # 渲染状态
-    #             if env.is_render:
-    #                 env.render()
-    #             done = done[0] if isinstance(done, list) else done
-    #             rewards_i.append(reward)
-    #             infos_i.append(info)
-    #         rewards.append(np.sum(rewards_i))
-    #         infos.append(infos_i)
-    #     return rewards, infos
-
-        #     done = False
-            
-        #     while not np.all(done):
-        #         # 获取动作
-        #         actions = []
-        #         for agent_id in range(self.n_agents):
-        #             state_var = to_tensor_var(state, self.use_cuda).view(-1, self.n_agents, self.state_dim)
-        #             if not th.isfinite(state_var).all():
-        #                 print(f"Invalid state_var detected: {state_var}")
-        #                 raise ValueError(f"Invalid state_var: {state_var}")
-        #             action_log_prob = self.actors[agent_id](state_var[:, agent_id, :])
-        #             action_prob = th.exp(action_log_prob)
-        #             action_prob = action_prob.clamp(min=1e-12, max=1-1e-12)
-        #             if th.any(action_prob.isnan()) or th.any(action_prob.isinf()) or th.any(action_prob < 0):
-        #                 print("Invalid action_prob:", action_prob)
-        #                 print("action_log_prob:", action_log_prob)
-        #             action = action_prob.multinomial(1).cpu().numpy()
-        #             actions.append(action)
-        #         actions = np.array(actions).squeeze()
-
-        #         # 环境步进
-        #         state, reward, done, info = env.step(actions)
-        #         done = done[0] if isinstance(done, list) else done
-
-        #         rewards_i.append(reward)
-        #         infos_i.append(info)
-
-        #     rewards.append(np.sum(rewards_i))  # 计算每个回合的总奖励
-        #     infos.append(infos_i)
-
-        # return rewards, infos
 
     
 if __name__ == "__main__":
@@ -373,7 +317,7 @@ if __name__ == "__main__":
 
     # 初始化参数
     n_agents = 10
-    num_garbage = 500
+    num_garbage = 100
 
     # 创建环境实例
     env = StreetCleaningEnv(num_agents=n_agents, num_garbage=num_garbage)
