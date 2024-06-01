@@ -79,7 +79,11 @@ class Agent(object):
         state = self.env_state
         action = self.exploration_action(self.env_state)
         next_state, reward, done, _ = self.env.step(action)
-        if done:
+        if isinstance(done, np.ndarray):  # add for multi-agent env
+            if done.all():
+                if self.done_penalty is not None:
+                    reward = self.done_penalty
+        elif done:
             if self.done_penalty is not None:
                 reward = self.done_penalty
             next_state = [0] * len(state)

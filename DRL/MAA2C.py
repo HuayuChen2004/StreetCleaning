@@ -367,7 +367,7 @@ if __name__ == "__main__":
     eval_rewards = []
 
     # 训练循环
-    num_episodes = 1000  # 设定需要训练的回合数
+    num_episodes = 10000  # 设定需要训练的回合数
     for episode in range(num_episodes):
         a2c.interact()  # 交互以收集经验
         a2c.train()  # 在批量上进行训练
@@ -376,8 +376,8 @@ if __name__ == "__main__":
             print(f"Episode {episode+1}/{num_episodes} completed")
     
         # 每个回合结束后，评估模型并保存结果
-        if (episode+1) % 1 == 0:  # 每100回合评估一次
-            rewards, infos = a2c.evaluation(env, eval_episodes=10, render=True, window_size=(800, 600))
+        if (episode+1) % 100 == 0:  # 每100回合评估一次
+            rewards, infos = a2c.evaluation(env, eval_episodes=10, render=False, window_size=(800, 600))
             rewards_mu = np.mean(rewards)
             print("Episode %d, Average Reward %.2f" % (episode+1, rewards_mu))
             time.sleep(1)
@@ -411,7 +411,7 @@ if __name__ == "__main__":
     plt.title("MAA2C")
     plt.xlabel("Episode")
     plt.ylabel("Average Reward")
-    plt.legend(["A2C"])
+    plt.legend(["MAA2C"])
     plt.savefig(f"{output_dir}/MAA2C.png")
 
     print("end training!")
