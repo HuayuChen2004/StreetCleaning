@@ -7,8 +7,8 @@ from Render.utils import *
 HEIGHT = 54
 WIDTH = 78
 AGENT_SIZE = 1
-VISION_SIZE = 5
-MAX_EPISODE_LENGTH = 100
+VISION_SIZE = 10
+MAX_EPISODE_LENGTH = 1000
 DEFAULT_FILLING_VALUE = 0
 HOUSE_SIZE = 6
 LITTER_SIZE = 1
@@ -34,7 +34,7 @@ class StreetCleaningEnv(gym.Env):
         self.garbages_pos = []
         if not isinstance(self.fixed_map, np.ndarray):
             self.grid = np.zeros((self.height, self.width), dtype=np.uint8)  # Swap width and height here
-            self.set_houses()
+            # self.set_houses()
             self.set_agents()
             self.set_garbage()
         else:
@@ -70,16 +70,15 @@ class StreetCleaningEnv(gym.Env):
     def _get_obs(self):
         return np.array([self._get_local_obs(agent_pos) for agent_pos in self.agents_pos])
     
-    
     def step(self, action: list):
         rewards = np.zeros(self.num_agents)
         for i, agent_pos in enumerate(self.agents_pos):
             x, y = agent_pos
             if action[i] == 0:  # up
                 y = (y - 1) % self.width
-            elif action[i] == 1:  # down
+            elif action[i] == 2:  # down
                 y = (y + 1) % self.width
-            elif action[i] == 2:  # left
+            elif action[i] == 1:  # left
                 x = (x - 1) % self.height
             elif action[i] == 3:  # right
                 x = (x + 1) % self.height

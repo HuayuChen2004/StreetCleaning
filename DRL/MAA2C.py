@@ -14,6 +14,7 @@ import os
 import time
 import datetime
 import pygame
+import math
 
 class MAA2C(Agent):
     """
@@ -115,6 +116,7 @@ class MAA2C(Agent):
                 c.cuda()
 
     # agent interact with the environment to collect experience
+    # 确保奖励结构平衡，例如在interact函数中调整奖励
     def interact(self):
         if (self.max_steps is not None) and (self.n_steps >= self.max_steps):
             self.env_state = self.env.reset()
@@ -122,7 +124,6 @@ class MAA2C(Agent):
         states = []
         actions = []
         rewards = []
-        # take n steps
         for i in range(self.roll_out_n_steps):
             states.append(self.env_state)
             action = self.exploration_action(self.env_state)
@@ -135,7 +136,10 @@ class MAA2C(Agent):
             if done:
                 self.env_state = self.env.reset()
                 break
-        # discount reward
+
+        if not done:
+            rewards[-1] += 0.01  # 每一步增加少量奖励
+
         if done:
             final_r = [0.0] * self.n_agents
             self.n_episodes += 1
@@ -153,11 +157,77 @@ class MAA2C(Agent):
         self.n_steps += 1
         self.memory.push(states, actions, rewards)
 
+    # def compute_distance_to_nearest_garbage(self, state, agent_id): 
+    #     state = state.reshape((11, 11))
+    #     garbages_indices = [(i, j) for i in range(len(state)) for j in range(len(state[i])) if state[i][j] == 3]
+    #     # print("shape of state: ", state.shape)
+    #     agent_index = ((math.sqrt(state.shape[1]-1) - 1) / 2, (math.sqrt(state.shape[1]-1) - 1) / 2)
+    #     garbages_indices = np.array(garbages_indices)
+    #     agent_index = np.array(agent_index)
+    #     if garbages_indices.size == 0:
+    #         return np.inf  # 如果没有垃圾，返回无穷大
+    #     else:
+    #         distances = np.linalg.norm(garbages_indices - agent_index, axis=1)
+    #         nearest_distance = np.min(distances)
+    #         return nearest_distance
+        
+    # def get_current_state(self, agent_id):
+    #     return self.env._get_local_obs(self.env.agents_pos[agent_id])
+
+    # def train(self):
+
+    #     states = self.env.reset()
+
+    #     for _ in range(self.max_steps):
+    #         actions = []
+
+    #         # 逐个智能体选择动作
+    #         for agent_id in range(self.n_agents):
+    #             state_var = to_tensor_var(states[agent_id], self.use_cuda).view(1, -1)
+    #             action_log_probs = self.actors[agent_id](state_var)
+    #             action = th.multinomial(th.exp(action_log_probs), 1)
+    #             actions.append(action.item())
+
+    #         # 执行动作并获得新状态和奖励
+    #         new_states, rewards, done, _ = self.env.step(actions)
+
+    #         # 计算每个智能体与最近垃圾的距离
+    #         distances = []
+    #         for agent_id in range(self.n_agents):
+    #             nearest_distance = self.compute_distance_to_nearest_garbage(new_states[agent_id], agent_id)
+    #             distances.append(nearest_distance)
+
+    #         # 逐个智能体更新策略
+    #         for agent_id in range(self.n_agents):
+    #             self.actor_optimizers[agent_id].zero_grad()
+
+    #             # 使用距离作为损失
+    #             nearest_distance_var = th.tensor(distances[agent_id], requires_grad=True, dtype=th.float32).view(-1, 1)
+    #             if self.use_cuda:
+    #                 nearest_distance_var = nearest_distance_var.cuda()
+
+    #             distance_loss = th.mean(nearest_distance_var)
+    #             actor_loss = distance_loss
+
+    #             # 反向传播和优化
+    #             actor_loss.backward()
+    #             if self.max_grad_norm is not None:
+    #                 nn.utils.clip_grad_norm(self.actors[agent_id].parameters(), self.max_grad_norm)
+    #             self.actor_optimizers[agent_id].step()
+
+    #         # 更新状态
+    #         states = new_states
+
+    #         if not self.env.garbages_pos:
+    #             break
+
+
+
     # train on a roll out batch
     def train(self):
         if self.n_episodes <= self.episodes_before_train:
-            pass
-
+            return
+        # print("training!")
         batch = self.memory.sample(self.batch_size)
         states_var = to_tensor_var(batch.states, self.use_cuda).view(-1, self.n_agents, self.state_dim)
         actions_var = to_tensor_var(batch.actions, self.use_cuda).view(-1, self.n_agents, self.action_dim)
@@ -194,6 +264,9 @@ class MAA2C(Agent):
             if self.max_grad_norm is not None:
                 nn.utils.clip_grad_norm(self.critics[agent_id].parameters(), self.max_grad_norm)
             self.critic_optimizers[agent_id].step()
+
+            # 打印损失值
+            # print(f"Agent {agent_id}, Actor loss: {actor_loss.item()}, Critic loss: {critic_loss.item()}")
 
     # predict softmax action based on state
     def _softmax_action(self, state):
@@ -286,12 +359,12 @@ class MAA2C(Agent):
             rewards_i = []
             infos_i = []
             state = env.reset()
-            done = np.zeros(self.n_agents)
+            done = np.full(self.n_agents, False)
 
-            while not np.all(done):
+            for _ in range(self.max_steps):
                 action = self.action(state)
                 state, reward, done, info = env.step(action)
-                if render:
+                if render and i == eval_episodes - 1:
                     self.render_pygame(env, screen, window_size)
                     for event in pygame.event.get():
                         if event.type == pygame.QUIT:
@@ -302,6 +375,9 @@ class MAA2C(Agent):
                 done = done[0] if isinstance(done, list) else done
                 rewards_i.append(reward)
                 infos_i.append(info)
+
+                if not self.env.garbages_pos:
+                    break
 
             rewards.append(np.sum(rewards_i))
             infos.append(infos_i)
@@ -316,7 +392,7 @@ if __name__ == "__main__":
     from NN.env import StreetCleaningEnv  # 确保导入正确的环境
 
     # 初始化参数
-    n_agents = 10
+    n_agents = 1
     num_garbage = 100
 
     # 创建环境实例
@@ -325,41 +401,41 @@ if __name__ == "__main__":
     eval_env = StreetCleaningEnv(num_agents=n_agents, num_garbage=num_garbage, fixed_map=eval_env_map, render=True)
     
     # 提取状态和动作的维度
-    state_dim = env.observation_space.shape[1]
+    state_dim = eval_env.observation_space.shape[1]
     # print("state_dim", state_dim)
     # exit()
-    action_dim = env.action_space.n
+    action_dim = eval_env.action_space.n
     
     # 创建MAA2C代理实例
     a2c = MAA2C(
-        env=env, 
+        env=eval_env, 
         n_agents=n_agents, 
         state_dim=state_dim, 
         action_dim=action_dim,
         memory_capacity=10000, 
-        max_steps=50000, 
-        roll_out_n_steps=10, 
+        max_steps=100, 
+        roll_out_n_steps=100, 
         reward_gamma=0.99, 
         reward_scale=1.0, 
         done_penalty=None,
-        actor_hidden_size=32, 
-        critic_hidden_size=32, 
+        actor_hidden_size=256,  # 增大隐藏层大小
+        critic_hidden_size=256,  # 增大隐藏层大小
         actor_output_act=nn.functional.log_softmax, 
         critic_loss="mse",
-        actor_lr=0.001, 
-        critic_lr=0.001, 
-        optimizer_type="rmsprop", 
+        actor_lr=0.001,  # 降低学习率
+        critic_lr=0.001,  # 降低学习率
+        optimizer_type="adam",  # 使用Adam优化器
         entropy_reg=0.01, 
-        max_grad_norm=0.5, 
-        batch_size=100, 
-        episodes_before_train=100, 
-        epsilon_start=0.9, 
-        epsilon_end=0.01, 
-        epsilon_decay=200, 
+        max_grad_norm=None,  # 暂时禁用梯度裁剪
+        batch_size=64,  # 使用较小的批量大小
+        episodes_before_train=10,  # 提前开始训练
+        epsilon_start=1.0, 
+        epsilon_end=0.1, 
+        epsilon_decay=1000,  # 延长探索衰减时间
         use_cuda=True, 
         training_strategy="cocurrent", 
-        actor_parameter_sharing=False, 
-        critic_parameter_sharing=False
+        actor_parameter_sharing=True,  # 尝试参数共享
+        critic_parameter_sharing=True  # 尝试参数共享
     )
     
     # 初始化存储结果的列表
@@ -376,8 +452,8 @@ if __name__ == "__main__":
             print(f"Episode {episode+1}/{num_episodes} completed")
     
         # 每个回合结束后，评估模型并保存结果
-        if (episode+1) % 100 == 0:  # 每100回合评估一次
-            rewards, infos = a2c.evaluation(eval_env, eval_episodes=10, render=False, window_size=(800, 600))
+        if (episode+1) % 1000 == 0:  # 每100回合评估一次
+            rewards, infos = a2c.evaluation(eval_env, eval_episodes=10, render=True, window_size=(800, 600))
             rewards_mu = np.mean(rewards)
             print("Episode %d, Average Reward %.2f" % (episode+1, rewards_mu))
             time.sleep(1)

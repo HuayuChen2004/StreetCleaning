@@ -14,6 +14,7 @@ import os
 import datetime
 import matplotlib.pyplot as plt
 import pygame
+import time
 
 
 class MADQN(Agent):
@@ -226,13 +227,13 @@ if __name__ == "__main__":
         critic_hidden_size=32,
         actor_output_act=identity,
         critic_loss="mse",
-        actor_lr=0.001,
-        critic_lr=0.001,
+        actor_lr=0.1,
+        critic_lr=0.1,
         optimizer_type="rmsprop",
         entropy_reg=0.01,
         max_grad_norm=0.5,
-        batch_size=100,
-        episodes_before_train=100,
+        batch_size=10,
+        episodes_before_train=1000,
         epsilon_start=0.9,
         epsilon_end=0.01,
         epsilon_decay=200,
@@ -244,20 +245,21 @@ if __name__ == "__main__":
     eval_rewards = []
 
     # 训练循环
-    num_episodes = 1000  # 设定需要训练的回合数
+    num_episodes = 100000  # 设定需要训练的回合数
     for episode in range(num_episodes):
         madqn.interact()
         if episode >= madqn.episodes_before_train:
             madqn.train()
-        if madqn.episode_done and ((episode + 1) % 100 == 0):
-            rewards, _ = madqn.evaluation(eval_env, 10)
-            eval_rewards.append(rewards)
+        if (episode + 1) % 10000 == 0:
+            rewards, _ = madqn.evaluation(eval_env, 10, render=True)
             episodes.append(episode + 1)
             eval_rewards_mu, eval_rewards_std = np.mean(rewards), np.std(rewards)
             eval_rewards.append(eval_rewards_mu)
             print("Episode %d, Average Reward %.2f" % (episode + 1, eval_rewards_mu))
+            time.sleep(1)
     
     episodes = np.array(episodes)
+    print("eval_rewards: ", eval_rewards)
     eval_rewards = np.array(eval_rewards)
 
     # 创建output目录，如果它不存在的话
