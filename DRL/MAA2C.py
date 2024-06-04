@@ -377,7 +377,7 @@ if __name__ == "__main__":
     
         # 每个回合结束后，评估模型并保存结果
         if (episode+1) % 100 == 0:  # 每100回合评估一次
-            rewards, infos = a2c.evaluation(env, eval_episodes=10, render=False, window_size=(800, 600))
+            rewards, infos = a2c.evaluation(eval_env, eval_episodes=10, render=False, window_size=(800, 600))
             rewards_mu = np.mean(rewards)
             print("Episode %d, Average Reward %.2f" % (episode+1, rewards_mu))
             time.sleep(1)
@@ -394,13 +394,10 @@ if __name__ == "__main__":
     # 创建目录
     # 获取当前时间并转换为字符串
     now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    output_dir = f"./output/{now}"
+    output_dir = f"./output/maa2c/{now}"
     os.makedirs(output_dir, exist_ok=True)
 
     # 保存文件
-    np.savetxt(f"{output_dir}/MAA2C_episodes.txt", episodes)
-    
-
     np.savetxt(f"{output_dir}/MAA2C_episodes.txt", episodes)
     np.savetxt(f"{output_dir}/MAA2C_eval_rewards.txt", eval_rewards)
     print("eval_rewards:", eval_rewards)

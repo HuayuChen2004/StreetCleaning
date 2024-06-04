@@ -10,6 +10,11 @@ from common.Model import ActorNetwork
 from common.utils import identity, to_tensor_var
 from common.Memory import ReplayMemory
 
+import os 
+import datetime
+import matplotlib.pyplot as plt
+import pygame
+
 
 class MADQN(Agent):
     """
@@ -41,6 +46,7 @@ class MADQN(Agent):
         self.actors = [ActorNetwork(self.state_dim, self.actor_hidden_size,
                                     self.action_dim, self.actor_output_act) for _ in range(n_agents)]
         self.memories = [ReplayMemory(memory_capacity) for _ in range(n_agents)]
+        self.episode_done = False
         if self.optimizer_type == "adam":
             self.actor_optimizers = [Adam(actor.parameters(), lr=self.actor_lr) for actor in self.actors]
         elif self.optimizer_type == "rmsprop":
@@ -120,6 +126,73 @@ class MADQN(Agent):
             action = np.argmax(state_action_value)
             actions.append(action)
         return actions
+    
+    def render_pygame(self, env, screen, window_size):
+        # Render the environment and get the image
+        img = env.render(mode='rgb_array')
+        if img is None:
+            print("Environment did not return an image.")
+            return
+
+        # Check if the image has three channels (RGB)
+        if img.ndim != 3 or img.shape[2] != 3:
+            print(f"Unexpected image dimensions: {img.shape}")
+            img = np.zeros((window_size[1], window_size[0], 3), dtype=np.uint8)
+        else:
+            # Clip the image values to be between 0 and 255 and ensure correct type
+            img = np.clip(img, 0, 255).astype(np.uint8)
+            # Scale the image to the window size
+            img_surface = pygame.surfarray.make_surface(img.swapaxes(0, 1))
+            img_surface = pygame.transform.scale(img_surface, window_size)
+            # Blit the image surface to the screen
+            screen.blit(img_surface, (0, 0))
+            # Update the display
+            pygame.display.flip()
+
+        # Handle events to allow window to close
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                raise SystemExit
+    
+    def evaluation(self, env, eval_episodes=10, render=False, window_size=(800, 600)):
+        rewards = []
+        infos = []
+
+        if render:
+            pygame.init()
+            screen = pygame.display.set_mode(window_size)
+            pygame.display.set_caption("Environment Render")
+            clock = pygame.time.Clock()
+
+        for i in range(eval_episodes):
+            rewards_i = []
+            infos_i = []
+            state = env.reset()
+            done = np.zeros(self.n_agents)
+
+            while not np.all(done):
+                action = self.action(state)
+                state, reward, done, info = env.step(action)
+                if render:
+                    self.render_pygame(env, screen, window_size)
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            pygame.quit()
+                            return 
+                    clock.tick(30)
+
+                done = done[0] if isinstance(done, list) else done
+                rewards_i.append(reward)
+                infos_i.append(info)
+
+            rewards.append(np.sum(rewards_i))
+            infos.append(infos_i)
+
+        if render:
+            pygame.quit()
+
+        return rewards, infos
 
 if __name__ == "__main__":
     from NN.env import StreetCleaningEnv  # 确保导入正确的环境
@@ -171,26 +244,41 @@ if __name__ == "__main__":
     eval_rewards = []
 
     # 训练循环
-    num_episodes = 10000  # 设定需要训练的回合数
+    num_episodes = 1000  # 设定需要训练的回合数
     for episode in range(num_episodes):
-        state = env.reset()
-        total_reward = 0
-        done = False
-        while not done:
-            action = madqn.exploration_action(state)
-            next_state, reward, done, _ = env.step(action)
-            madqn.memories[0].push(state, action[0], reward[0], next_state, done)
-            state = next_state
-            total_reward += sum(reward)
-            madqn.n_steps += 1
-            madqn.interact()
+        madqn.interact()
+        if episode >= madqn.episodes_before_train:
             madqn.train()
-        episodes.append(episode)
-        eval_reward = 0
-        eval_state = eval_env.reset()
-        eval_done = False
-        while not eval_done:
-            eval_action = madqn.action(eval_state)
-            eval_state, eval_reward, eval_done, _ = eval_env.step(eval_action)
-            eval_rewards.append(eval_reward)
-        print("Episode: {}, Total Reward: {}".format(episode, total_reward))
+        if madqn.episode_done and ((episode + 1) % 100 == 0):
+            rewards, _ = madqn.evaluation(eval_env, 10)
+            eval_rewards.append(rewards)
+            episodes.append(episode + 1)
+            eval_rewards_mu, eval_rewards_std = np.mean(rewards), np.std(rewards)
+            eval_rewards.append(eval_rewards_mu)
+            print("Episode %d, Average Reward %.2f" % (episode + 1, eval_rewards_mu))
+    
+    episodes = np.array(episodes)
+    eval_rewards = np.array(eval_rewards)
+
+    # 创建output目录，如果它不存在的话
+    if not os.path.exists('./output'):
+        os.makedirs('./output')
+    # 创建目录
+    # 获取当前时间并转换为字符串
+    now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    output_dir = f"./output/madqn/{now}"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 保存训练过程中的回合数和评估奖励
+    np.savetxt(f"{output_dir}/episodes.txt", episodes)
+    np.savetxt(f"{output_dir}/eval_rewards.txt", eval_rewards)
+
+    plt.figure()
+    plt.plot(episodes, eval_rewards)
+    plt.title("Street Cleaning with MADQN")
+    plt.xlabel("Episode")
+    plt.ylabel("Average Reward")
+    plt.legend(["MADQN"])
+    plt.savefig(f"{output_dir}/eval_rewards.png")
+    
+    print("end training!")

@@ -75,34 +75,23 @@ class StreetCleaningEnv(gym.Env):
         rewards = np.zeros(self.num_agents)
         for i, agent_pos in enumerate(self.agents_pos):
             x, y = agent_pos
-            if action[i] == 0 and y > 0 and self.grid[x][y-1] != 1:  # up
-                if self.grid[x][y-1] == 3:
-                    self.garbages_pos.remove([x, y-1])
+            if action[i] == 0:  # up
+                y = (y - 1) % self.width
+            elif action[i] == 1:  # down
+                y = (y + 1) % self.width
+            elif action[i] == 2:  # left
+                x = (x - 1) % self.height
+            elif action[i] == 3:  # right
+                x = (x + 1) % self.height
+
+            if self.grid[x][y] != 1:
+                if self.grid[x][y] == 3:
+                    self.garbages_pos.remove([x, y])
                     rewards[i] += 1
-                self.grid[x][y] = 0
-                self.grid[x][y-1] = 2
-                self.agents_pos[i] = [x, y-1]
-            elif action[i] == 1 and y < self.width-1 and self.grid[x][y+1] != 1:  # down
-                if self.grid[x][y+1] == 3:
-                    self.garbages_pos.remove([x, y+1])
-                    rewards[i] += 1
-                self.grid[x][y] = 0
-                self.grid[x][y+1] = 2
-                self.agents_pos[i] = [x, y+1]
-            elif action[i] == 2 and x > 0 and self.grid[x-1][y] != 1:  # left
-                if self.grid[x-1][y] == 3:
-                    self.garbages_pos.remove([x-1, y])
-                    rewards[i] += 1
-                self.grid[x][y] = 0
-                self.grid[x-1][y] = 2
-                self.agents_pos[i] = [x-1, y]
-            elif action[i] == 3 and x < self.height-1 and self.grid[x+1][y] != 1:  # right
-                if self.grid[x+1][y] == 3:
-                    self.garbages_pos.remove([x+1, y])
-                    rewards[i] += 1
-                self.grid[x][y] = 0
-                self.grid[x+1][y] = 2
-                self.agents_pos[i] = [x+1, y]
+                self.grid[agent_pos[0]][agent_pos[1]] = 0
+                self.grid[x][y] = 2
+                self.agents_pos[i] = [x, y]
+
         self.done = np.full(self.num_agents, len(self.garbages_pos) == 0)
         self.current_step += 1
         if self.current_step >= self.max_episode_length:
@@ -159,13 +148,15 @@ class StreetCleaningEnv(gym.Env):
     def get_initial_map(self):
         return self.initial_map
 
-env = StreetCleaningEnv(num_agents=3, num_garbage=20, render=True)
-# map = env.get_initial_map()
-# identical_env = StreetCleaningEnv(num_agents=3, num_garbage=20, fixed_map=map)
-# print("identical:", np.all(env.get_initial_map() == identical_env.get_initial_map()))
-# print("env.agents_pos:", env.agents_pos)
-# print("env.garbages_pos:", env.garbages_pos)
-print("agent places:", np.argwhere(env.grid == 2))
-print("garbage places:", np.argwhere(env.grid == 3))
-# exit()
-env.render()
+
+if __name__ == "__main__":
+    env = StreetCleaningEnv(num_agents=3, num_garbage=20, render=True)
+    # map = env.get_initial_map()
+    # identical_env = StreetCleaningEnv(num_agents=3, num_garbage=20, fixed_map=map)
+    # print("identical:", np.all(env.get_initial_map() == identical_env.get_initial_map()))
+    # print("env.agents_pos:", env.agents_pos)
+    # print("env.garbages_pos:", env.garbages_pos)
+    print("agent places:", np.argwhere(env.grid == 2))
+    print("garbage places:", np.argwhere(env.grid == 3))
+    # exit()
+    env.render()

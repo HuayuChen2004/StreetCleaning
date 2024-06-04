@@ -83,6 +83,10 @@ class Agent(object):
             if done.all():
                 if self.done_penalty is not None:
                     reward = self.done_penalty
+                next_state = [0] * len(state)
+                self.env_state = self.env.reset()
+                self.n_episodes += 1
+                self.episode_done = True
         elif done:
             if self.done_penalty is not None:
                 reward = self.done_penalty
@@ -172,6 +176,7 @@ class Agent(object):
             state = env.reset()
             action = self.action(state)
             state, reward, done, info = env.step(action)
+            done = done[0] if isinstance(done, np.ndarray) else done
             done = done[0] if isinstance(done, list) else done
             rewards_i.append(reward)
             infos_i.append(info)
@@ -179,6 +184,7 @@ class Agent(object):
                 action = self.action(state)
                 state, reward, done, info = env.step(action)
                 done = done[0] if isinstance(done, list) else done
+                done = done[0] if isinstance(done, np.ndarray) else done
                 rewards_i.append(reward)
                 infos_i.append(info)
             rewards.append(rewards_i)
