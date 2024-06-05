@@ -48,25 +48,24 @@ class StreetCleaningEnv(gym.Env):
     
     def _get_local_obs(self, agent_pos):
         x, y = agent_pos
-        observed_grid = np.full((2*VISION_SIZE+AGENT_SIZE, 2*VISION_SIZE+AGENT_SIZE), fill_value=DEFAULT_FILLING_VALUE)
         
-        # Calculate the ranges for the observed grid
-        grid_start_x = max(0, VISION_SIZE - x)
-        grid_end_x = min(2 * VISION_SIZE + AGENT_SIZE, self.height + VISION_SIZE - x)
-        grid_start_y = max(0, VISION_SIZE - y)
-        grid_end_y = min(2 * VISION_SIZE + AGENT_SIZE, self.width + VISION_SIZE - y)
+        # Create a larger grid by tiling the original grid
+        large_grid = np.tile(self.grid, (3, 3))
         
-        # Calculate the ranges for the actual grid
-        obs_start_x = max(x - VISION_SIZE, 0)
-        obs_end_x = min(x + VISION_SIZE + AGENT_SIZE, self.height)
-        obs_start_y = max(y - VISION_SIZE, 0)
-        obs_end_y = min(y + VISION_SIZE + AGENT_SIZE, self.width)
+        # Calculate the position in the large grid
+        large_x = x + self.height
+        large_y = y + self.width
         
-        # Assign the observed values to the grid
-        observed_grid[grid_start_x:grid_end_x, grid_start_y:grid_end_y] = self.grid[obs_start_x:obs_end_x, obs_start_y:obs_end_y]
+        # Extract the observed grid from the large grid
+        observed_grid = large_grid[
+            large_x - VISION_SIZE:large_x + VISION_SIZE + AGENT_SIZE,
+            large_y - VISION_SIZE:large_y + VISION_SIZE + AGENT_SIZE
+        ]
+        
         return observed_grid.flatten()
 
-    
+
+
     def _get_obs(self):
         return np.array([self._get_local_obs(agent_pos) for agent_pos in self.agents_pos])
     
@@ -86,7 +85,7 @@ class StreetCleaningEnv(gym.Env):
             if self.grid[x][y] != 1:
                 if self.grid[x][y] == 3:
                     self.garbages_pos.remove([x, y])
-                    rewards[i] += 1
+                    rewards[i] += 5
                 self.grid[agent_pos[0]][agent_pos[1]] = 0
                 self.grid[x][y] = 2
                 self.agents_pos[i] = [x, y]

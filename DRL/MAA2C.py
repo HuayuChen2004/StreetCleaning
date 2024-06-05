@@ -2,6 +2,7 @@
 import torch as th
 from torch import nn
 from torch.optim import Adam, RMSprop
+from torch.optim.lr_scheduler import StepLR
 
 import numpy as np
 
@@ -15,6 +16,7 @@ import time
 import datetime
 import pygame
 import math
+
 
 class MAA2C(Agent):
     """
@@ -97,7 +99,6 @@ class MAA2C(Agent):
         elif optimizer_type == "rmsprop":
             self.actor_optimizers = [RMSprop(self.actors[i].parameters(), lr=self.actor_lr) for i in range(self.n_agents)]
             self.critic_optimizers = [RMSprop(self.critics[i].parameters(), lr=self.critic_lr) for i in range(self.n_agents)]
-
 
         # tricky and memory consumed implementation of parameter sharing
         if self.actor_parameter_sharing:
@@ -227,7 +228,6 @@ class MAA2C(Agent):
     def train(self):
         if self.n_episodes <= self.episodes_before_train:
             return
-        # print("training!")
         batch = self.memory.sample(self.batch_size)
         states_var = to_tensor_var(batch.states, self.use_cuda).view(-1, self.n_agents, self.state_dim)
         actions_var = to_tensor_var(batch.actions, self.use_cuda).view(-1, self.n_agents, self.action_dim)
@@ -392,7 +392,7 @@ if __name__ == "__main__":
     from NN.env import StreetCleaningEnv  # 确保导入正确的环境
 
     # 初始化参数
-    n_agents = 1
+    n_agents = 10
     num_garbage = 100
 
     # 创建环境实例
@@ -407,52 +407,57 @@ if __name__ == "__main__":
     action_dim = eval_env.action_space.n
     
     # 创建MAA2C代理实例
+    # epsilon_start 和 epsilon_end 值已经设置，可以尝试更慢的衰减速度
     a2c = MAA2C(
         env=eval_env, 
         n_agents=n_agents, 
         state_dim=state_dim, 
         action_dim=action_dim,
         memory_capacity=10000, 
-        max_steps=100, 
+        max_steps=1000, 
         roll_out_n_steps=100, 
-        reward_gamma=0.99, 
+        reward_gamma=0.9, 
         reward_scale=1.0, 
         done_penalty=None,
         actor_hidden_size=256,  # 增大隐藏层大小
         critic_hidden_size=256,  # 增大隐藏层大小
         actor_output_act=nn.functional.log_softmax, 
         critic_loss="mse",
-        actor_lr=0.001,  # 降低学习率
-        critic_lr=0.001,  # 降低学习率
-        optimizer_type="adam",  # 使用Adam优化器
+        actor_lr=0.00001,  # 降低学习率
+        critic_lr=0.00001,  # 降低学习率
+        optimizer_type="rmsprop",  # 使用Adam优化器
         entropy_reg=0.01, 
-        max_grad_norm=None,  # 暂时禁用梯度裁剪
-        batch_size=64,  # 使用较小的批量大小
+        max_grad_norm=1.0,  # 暂时禁用梯度裁剪
+        batch_size=128,  # 使用较小的批量大小
         episodes_before_train=10,  # 提前开始训练
         epsilon_start=1.0, 
         epsilon_end=0.1, 
-        epsilon_decay=1000,  # 延长探索衰减时间
+        epsilon_decay=30000,  # 延长探索衰减时间
         use_cuda=True, 
         training_strategy="cocurrent", 
-        actor_parameter_sharing=True,  # 尝试参数共享
-        critic_parameter_sharing=True  # 尝试参数共享
+        actor_parameter_sharing=False,  # 尝试参数共享
+        critic_parameter_sharing=False  # 尝试参数共享
     )
+
     
     # 初始化存储结果的列表
     episodes = []
     eval_rewards = []
 
     # 训练循环
-    num_episodes = 10000  # 设定需要训练的回合数
+    num_episodes = 2000  # 设定需要训练的回合数
     for episode in range(num_episodes):
-        a2c.interact()  # 交互以收集经验
-        a2c.train()  # 在批量上进行训练
+        if episode <= a2c.episodes_before_train:
+            a2c.interact()
+        else:
+            a2c.interact()  # 交互以收集经验
+            a2c.train()  # 在批量上进行训练
         
         if (episode+1) % 100 == 0:  # 每100回合打印一次结果
             print(f"Episode {episode+1}/{num_episodes} completed")
     
         # 每个回合结束后，评估模型并保存结果
-        if (episode+1) % 1000 == 0:  # 每100回合评估一次
+        if (episode+1) % 200 == 0:  # 每100回合评估一次
             rewards, infos = a2c.evaluation(eval_env, eval_episodes=10, render=True, window_size=(800, 600))
             rewards_mu = np.mean(rewards)
             print("Episode %d, Average Reward %.2f" % (episode+1, rewards_mu))

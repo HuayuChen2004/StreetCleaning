@@ -1,36 +1,27 @@
-
 import torch as th
 from torch import nn
 from torch.optim import Adam, RMSprop
-
 import numpy as np
-
 from common.Agent import Agent
 from common.Model import ActorNetwork
-from common.utils import identity, to_tensor_var
+from common.utils import identity, to_tensor_var, index_to_one_hot
 from common.Memory import ReplayMemory
-
-import os 
+import os
 import datetime
 import matplotlib.pyplot as plt
 import pygame
 import time
 
-
 class MADQN(Agent):
-    """
-    An agent learned with DQN using replay memory and temporal difference
-    - use a value network to estimate the state-action value
-    """
     def __init__(self, n_agents, env, state_dim, action_dim,
                  memory_capacity=10000, max_steps=10000,
                  reward_gamma=0.99, reward_scale=1., done_penalty=None,
-                 actor_hidden_size=32, critic_hidden_size=32,
+                 actor_hidden_size=128, critic_hidden_size=128,
                  actor_output_act=identity, critic_loss="mse",
-                 actor_lr=0.001, critic_lr=0.001,
+                 actor_lr=0.0005, critic_lr=0.0005,
                  optimizer_type="rmsprop", entropy_reg=0.01,
-                 max_grad_norm=0.5, batch_size=100, episodes_before_train=100,
-                 epsilon_start=0.9, epsilon_end=0.01, epsilon_decay=200,
+                 max_grad_norm=0.5, batch_size=64, episodes_before_train=100,
+                 epsilon_start=1.0, epsilon_end=0.01, epsilon_decay=500,
                  use_cuda=True):
         super(MADQN, self).__init__(env, state_dim, action_dim,
                  memory_capacity, max_steps,
@@ -48,6 +39,7 @@ class MADQN(Agent):
                                     self.action_dim, self.actor_output_act) for _ in range(n_agents)]
         self.memories = [ReplayMemory(memory_capacity) for _ in range(n_agents)]
         self.episode_done = False
+        self.roll_out_n_steps = 100
         if self.optimizer_type == "adam":
             self.actor_optimizers = [Adam(actor.parameters(), lr=self.actor_lr) for actor in self.actors]
         elif self.optimizer_type == "rmsprop":
@@ -56,11 +48,52 @@ class MADQN(Agent):
             for actor in self.actors:
                 actor.cuda()
 
-    # agent interact with the environment to collect experience
     def interact(self):
-        super(MADQN, self)._take_one_step()
+        super(MADQN, self)._take_n_steps()
 
-    # train on a sample batch
+    # def interact(self):
+    #     if (self.max_steps is not None) and (self.n_steps >= self.max_steps):
+    #         self.env_state = self.env.reset()
+    #         self.n_steps = 0
+    #     states = []
+    #     actions = []
+    #     rewards = []
+    #     for i in range(self.roll_out_n_steps):
+    #         states.append(self.env_state)
+    #         action = self.exploration_action(self.env_state)
+    #         next_state, reward, done, _ = self.env.step(action)
+    #         done = done[0]
+    #         actions.append([index_to_one_hot(a, self.action_dim) for a in action])
+    #         rewards.append(reward)
+    #         final_state = next_state
+    #         self.env_state = next_state
+    #         if done:
+    #             self.env_state = self.env.reset()
+    #             break
+
+    #     if not done:
+    #         rewards[-1] += 0.01  # 每一步增加少量奖励
+
+    #     if done:
+    #         final_r = [0.0] * self.n_agents
+    #         self.n_episodes += 1
+    #         self.episode_done = True
+    #     else:
+    #         self.episode_done = False
+    #         final_action = self.action(final_state)
+    #         one_hot_action = [index_to_one_hot(a, self.action_dim) for a in final_action]
+    #         final_r = self.value(final_state, one_hot_action)
+
+    #     rewards = np.array(rewards)
+    #     for agent_id in range(self.n_agents):
+    #         rewards[:,agent_id] = self._discount_reward(rewards[:,agent_id], final_r[agent_id])
+    #     rewards = rewards.tolist()
+    #     self.n_steps += 1
+    #     self.memory.push(states, actions, rewards)
+
+    def value(self, state, action):
+        pass # TODO
+
     def train(self):
         if self.n_episodes <= self.episodes_before_train:
             return
@@ -73,18 +106,11 @@ class MADQN(Agent):
             next_states_var = to_tensor_var(batch.next_states, self.use_cuda).view(-1, self.state_dim)
             dones_var = to_tensor_var(batch.dones, self.use_cuda).view(-1, 1)
 
-            # compute Q(s_t, a) - the model computes Q(s_t), then we select the
-            # columns of actions taken
             current_q = actor(states_var).gather(1, actions_var)
-
-            # compute V(s_{t+1}) for all next states and all actions,
-            # and we then take max_a { V(s_{t+1}) }
             next_state_action_values = actor(next_states_var).detach()
             next_q = th.max(next_state_action_values, 1)[0].view(-1, 1)
-            # compute target q by: r + gamma * max_a { V(s_{t+1}) }
             target_q = self.reward_scale * rewards_var + self.reward_gamma * next_q * (1. - dones_var)
 
-            # update value network
             actor_optimizer.zero_grad()
             if self.critic_loss == "huber":
                 loss = th.nn.functional.smooth_l1_loss(current_q, target_q)
@@ -92,10 +118,9 @@ class MADQN(Agent):
                 loss = th.nn.MSELoss()(current_q, target_q)
             loss.backward()
             if self.max_grad_norm is not None:
-                nn.utils.clip_grad_norm(actor.parameters(), self.max_grad_norm)
+                nn.utils.clip_grad_norm_(actor.parameters(), self.max_grad_norm)
             actor_optimizer.step()
 
-    # 根据状态选择一个带有随机噪声的动作用于训练中的探索
     def exploration_action(self, states):
         actions = []
         epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
@@ -114,7 +139,6 @@ class MADQN(Agent):
             actions.append(action)
         return actions
 
-    # choose an action based on state for execution
     def action(self, states):
         actions = []
         for actor, state in zip(self.actors, states):
@@ -129,28 +153,21 @@ class MADQN(Agent):
         return actions
     
     def render_pygame(self, env, screen, window_size):
-        # Render the environment and get the image
         img = env.render(mode='rgb_array')
         if img is None:
             print("Environment did not return an image.")
             return
 
-        # Check if the image has three channels (RGB)
         if img.ndim != 3 or img.shape[2] != 3:
             print(f"Unexpected image dimensions: {img.shape}")
             img = np.zeros((window_size[1], window_size[0], 3), dtype=np.uint8)
         else:
-            # Clip the image values to be between 0 and 255 and ensure correct type
             img = np.clip(img, 0, 255).astype(np.uint8)
-            # Scale the image to the window size
             img_surface = pygame.surfarray.make_surface(img.swapaxes(0, 1))
             img_surface = pygame.transform.scale(img_surface, window_size)
-            # Blit the image surface to the screen
             screen.blit(img_surface, (0, 0))
-            # Update the display
             pygame.display.flip()
 
-        # Handle events to allow window to close
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -196,21 +213,16 @@ class MADQN(Agent):
         return rewards, infos
 
 if __name__ == "__main__":
-    from NN.env import StreetCleaningEnv  # 确保导入正确的环境
+    from NN.env import StreetCleaningEnv
 
-    # 初始化参数
     n_agents = 10
     num_garbage = 100
 
-    # 创建环境实例
     env = StreetCleaningEnv(num_agents=n_agents, num_garbage=num_garbage)
     eval_env_map = env.get_initial_map()
     eval_env = StreetCleaningEnv(num_agents=n_agents, num_garbage=num_garbage, fixed_map=eval_env_map, render=True)
     
-    # 提取状态和动作的维度
     state_dim = env.observation_space.shape[1]
-    # print("state_dim", state_dim)
-    # exit()
     action_dim = env.action_space.n
 
     madqn = MADQN(
@@ -219,39 +231,38 @@ if __name__ == "__main__":
         state_dim=state_dim,
         action_dim=action_dim,
         memory_capacity=10000,
-        max_steps=10000,
-        reward_gamma=0.99,
-        reward_scale=1.,
+        max_steps=1000,
+        reward_gamma=0.9,
+        reward_scale=1.0,
         done_penalty=None,
-        actor_hidden_size=32,
-        critic_hidden_size=32,
+        actor_hidden_size=128,
+        critic_hidden_size=128,
         actor_output_act=identity,
         critic_loss="mse",
-        actor_lr=0.1,
-        critic_lr=0.1,
+        actor_lr=0.0005,
+        critic_lr=0.0005,
         optimizer_type="rmsprop",
         entropy_reg=0.01,
         max_grad_norm=0.5,
-        batch_size=10,
-        episodes_before_train=1000,
-        epsilon_start=0.9,
+        batch_size=64,
+        episodes_before_train=100,
+        epsilon_start=1.0,
         epsilon_end=0.01,
-        epsilon_decay=200,
+        epsilon_decay=500,
         use_cuda=False
     )
 
-    # 初始化存储结果的列表
     episodes = []
     eval_rewards = []
 
-    # 训练循环
-    num_episodes = 100000  # 设定需要训练的回合数
+    num_episodes = 10
+
     for episode in range(num_episodes):
         madqn.interact()
         if episode >= madqn.episodes_before_train:
             madqn.train()
-        if (episode + 1) % 10000 == 0:
-            rewards, _ = madqn.evaluation(eval_env, 10, render=True)
+        if (episode + 1) % 1 == 0:
+            rewards, _ = madqn.evaluation(eval_env, 10, render=False)
             episodes.append(episode + 1)
             eval_rewards_mu, eval_rewards_std = np.mean(rewards), np.std(rewards)
             eval_rewards.append(eval_rewards_mu)
@@ -259,19 +270,14 @@ if __name__ == "__main__":
             time.sleep(1)
     
     episodes = np.array(episodes)
-    print("eval_rewards: ", eval_rewards)
     eval_rewards = np.array(eval_rewards)
 
-    # 创建output目录，如果它不存在的话
     if not os.path.exists('./output'):
         os.makedirs('./output')
-    # 创建目录
-    # 获取当前时间并转换为字符串
     now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     output_dir = f"./output/madqn/{now}"
     os.makedirs(output_dir, exist_ok=True)
 
-    # 保存训练过程中的回合数和评估奖励
     np.savetxt(f"{output_dir}/episodes.txt", episodes)
     np.savetxt(f"{output_dir}/eval_rewards.txt", eval_rewards)
 
