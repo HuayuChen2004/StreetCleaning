@@ -158,19 +158,19 @@ class MAA2C(Agent):
         self.n_steps += 1
         self.memory.push(states, actions, rewards)
 
-    # def compute_distance_to_nearest_garbage(self, state, agent_id): 
-    #     state = state.reshape((11, 11))
-    #     garbages_indices = [(i, j) for i in range(len(state)) for j in range(len(state[i])) if state[i][j] == 3]
-    #     # print("shape of state: ", state.shape)
-    #     agent_index = ((math.sqrt(state.shape[1]-1) - 1) / 2, (math.sqrt(state.shape[1]-1) - 1) / 2)
-    #     garbages_indices = np.array(garbages_indices)
-    #     agent_index = np.array(agent_index)
-    #     if garbages_indices.size == 0:
-    #         return np.inf  # 如果没有垃圾，返回无穷大
-    #     else:
-    #         distances = np.linalg.norm(garbages_indices - agent_index, axis=1)
-    #         nearest_distance = np.min(distances)
-    #         return nearest_distance
+    def compute_distance_to_nearest_garbage(self, state, agent_id): 
+        state = state.reshape((11, 11))
+        garbages_indices = [(i, j) for i in range(len(state)) for j in range(len(state[i])) if state[i][j] == 3]
+        # print("shape of state: ", state.shape)
+        agent_index = ((math.sqrt(state.shape[1]-1) - 1) / 2, (math.sqrt(state.shape[1]-1) - 1) / 2)
+        garbages_indices = np.array(garbages_indices)
+        agent_index = np.array(agent_index)
+        if garbages_indices.size == 0:
+            return np.inf  # 如果没有垃圾，返回无穷大
+        else:
+            distances = np.linalg.norm(garbages_indices - agent_index, axis=1)
+            nearest_distance = np.min(distances)
+            return nearest_distance
         
     # def get_current_state(self, agent_id):
     #     return self.env._get_local_obs(self.env.agents_pos[agent_id])
@@ -416,7 +416,7 @@ if __name__ == "__main__":
         memory_capacity=10000, 
         max_steps=1000, 
         roll_out_n_steps=100, 
-        reward_gamma=0.9, 
+        reward_gamma=0.99, 
         reward_scale=1.0, 
         done_penalty=None,
         actor_hidden_size=256,  # 增大隐藏层大小

@@ -12,6 +12,10 @@ Goals include:
 4. maximize cleaning efficiency(by 5.29)
 5. explore nn(by 6.5)
 
-场景设想：
-白天，热闹的街市，人和车和垃圾都挺多，传统方法，看到就扫，多了摇人。
-晚上，街市空荡，只有垃圾，深度学习方法。
+There are two different settings in this project:
+
+1. The first one is to simulate daytime cleaning, where the agents are supposed to clean the streets while cars and pedestrians are moving around. The agents are supposed to avoid collisions with cars, and they are supposed to clean the streets as efficiently as possible.
+2. The second one is to simulate nighttime cleaning, where there are no obstacles on the streets. The agents are supposed to clean the streets as efficiently as possible.
+
+For the first setting, run Render.main.py
+For the second setting, run DRL.MAA2C.py
