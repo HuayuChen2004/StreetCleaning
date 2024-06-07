@@ -9,7 +9,7 @@ from Agent.agent import Agent
 # parameters
 num_cars = 8
 num_pedestrians = 15
-num_agent = 3
+num_agent = 6
 traffic_light = 'horizontal'
 light_duration = 300  # Duration of each traffic light in frames
 
@@ -157,7 +157,7 @@ def main():
 
         # 更新车辆和行人位置
         for car in cars:
-            car.speed = random.choice([3, 4, 5])
+            # car.speed = random.choice([3, 4, 5])
             car.move(traffic_light, left_time)
             # litter_x = random.randint(car.x, car.x + CAR_LENGTH)
             # litter_y = random.randint(car.y, car.y + CAR_WIDTH)
@@ -176,6 +176,10 @@ def main():
                 litters.remove(litter)
         for agent in agents:
             agent.start_cleaning(litters, pedestrians, cars, agents, houses, traffic_light)
+            for litter in litters:
+                if agent.is_litter_covered(litter):
+                    litter.weight -= 1
+                    print("litter is being cleaned")
 
         # 清屏
         screen.fill(WHITE)

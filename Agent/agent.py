@@ -338,7 +338,8 @@ class Agent(LitterCleaner):
         if self.is_litter_covered(litter):
             self.preferred_directions = []
             self.direction = None
-            litter.clean()
+            # litter.clean()
+            # print("litter is being cleaned!")
     
     def start_cleaning(self, litters, pedestrians, cars, agents, houses, traffic_light):
         self.vision_range = []
